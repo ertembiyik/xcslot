@@ -81,3 +81,9 @@ jobs:
         run: |
           bun scripts/build.ts --target host
           ./dist/xcslot doctor
+      - name: the Homebrew formula passes brew style
+        run: |
+          mkdir -p "$RUNNER_TEMP/Formula"
+          printf '%064d  xcslot-darwin-arm64\n%064d  xcslot-darwin-x64\n' 0 1 > "$RUNNER_TEMP/checksums.txt"
+          sh .github/scripts/formula.sh v0.0.0 "$RUNNER_TEMP/checksums.txt" > "$RUNNER_TEMP/Formula/xcslot.rb"
+          brew style "$RUNNER_TEMP/Formula/xcslot.rb"

@@ -24,16 +24,16 @@ class Xcslot < Formula
   version "${tag#v}"
   license "MIT"
 
-  depends_on :macos
-
-  on_arm do
+  # brew style allows no url inside on_arm and on_intel.
+  if Hardware::CPU.arm?
     url "$base/xcslot-darwin-arm64"
     sha256 "$arm"
-  end
-  on_intel do
+  else
     url "$base/xcslot-darwin-x64"
     sha256 "$intel"
   end
+
+  depends_on :macos
 
   def install
     bin.install Dir["xcslot-darwin-*"].first => "xcslot"
