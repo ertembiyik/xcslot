@@ -1,5 +1,5 @@
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { failure, type XcslotError } from "../lib/errors.ts";
 import { exec } from "../lib/proc.ts";
 import { err, ok, type Result } from "../lib/result.ts";
@@ -21,7 +21,8 @@ function isMachO(path: string): boolean {
 
 /**
  * The binaries that carry code: plain executables and libraries in a configuration folder, and inside each
- * bundle the executable plus, in Debug builds, the `*.debug.dylib` that holds the code.
+ * bundle (flat, or laid out as on macOS) the executable plus, in Debug builds, the `*.debug.dylib` that holds
+ * the code.
  */
 export function debuggableBinaries(products: string): string[] {
   const found: string[] = [];
@@ -35,7 +36,9 @@ export function debuggableBinaries(products: string): string[] {
       const path = join(dir, entry.name);
       if (!entry.isDirectory() || entry.name.endsWith(".dSYM")) continue;
       if (BUNDLE.test(entry.name)) {
-        for (const base of [path, join(path, "Contents", "MacOS")]) if (existsSync(base)) found.push(...machOIn(base));
+        for (const base of [path, join(path, "Contents", "MacOS"), join(path, "Versions", "A")]) {
+          if (existsSync(base)) found.push(...machOIn(base));
+        }
       }
       walk(path, depth + 1);
     }
@@ -58,17 +61,28 @@ ${spellings(from)
 const escapeXml = (text: string) => text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 
 /**
+ * Where a binary's dSYM goes: beside the outermost bundle that holds it. A file added inside a signed bundle
+ * breaks its seal, and a debugger looks for `<Bundle>.dSYM` next to the bundle anyway.
+ */
+function dsymFor(products: string, binary: string): string {
+  const parts = relative(products, binary).split(sep);
+  const outer = parts.findIndex((part) => BUNDLE.test(part));
+  return outer === -1 ? `${binary}.dSYM` : `${join(products, ...parts.slice(0, outer + 1))}.dSYM`;
+}
+
+/**
  * Debug builds keep their debug info in the slot's object files, which the next build in the slot replaces; a
- * debugger would then show wrong lines. A dSYM next to each binary, made while the slot is still held, carries
- * the debug info with the product, and its remapping record points source paths at the worktree.
+ * debugger would then show wrong lines. A dSYM made while the slot is still held carries the debug info with
+ * the product, and its remapping record points source paths at the worktree.
  */
 export async function embedDebugSymbols(products: string, slotSrc: string, worktree: string): Promise<number> {
+  const groups = Map.groupBy(debuggableBinaries(products), (binary) => dsymFor(products, binary));
   const made = await Promise.all(
-    debuggableBinaries(products).map(async (binary) => {
-      const dsym = `${binary}.dSYM`;
-      const done = await Bun.spawn(["dsymutil", binary, "-o", dsym], { stdout: "ignore", stderr: "pipe" });
+    [...groups].map(async ([dsym, binaries]) => {
+      const done = Bun.spawn(["dsymutil", ...binaries, "-o", dsym], { stdout: "ignore", stderr: "pipe" });
       const warnings = await new Response(done.stderr).text();
-      if ((await done.exited) !== 0 || warnings.includes("no debug symbols in executable")) {
+      const empty = warnings.split("no debug symbols in executable").length - 1 >= binaries.length;
+      if ((await done.exited) !== 0 || empty) {
         rmSync(dsym, { recursive: true, force: true });
         return false;
       }
