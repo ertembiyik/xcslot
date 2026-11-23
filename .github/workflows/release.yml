@@ -1,0 +1,43 @@
+name: release
+
+# A tag vX.Y.Z that matches package.json builds the binaries, publishes a GitHub Release and updates the
+# Homebrew formula. Every step can be rerun.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-26
+    environment: release
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: the tag matches package.json
+        run: test "v$(bun -e 'console.log((await Bun.file("package.json").json()).version)')" = "$GITHUB_REF_NAME"
+      - run: bun run verify
+      - run: bun test test/e2e.test.ts
+        env:
+          XCSLOT_E2E: "1"
+      - run: bun scripts/build.ts
+      - name: the binary runs and reports this version
+        run: test "$(./dist/xcslot-darwin-arm64 --version)" = "${GITHUB_REF_NAME#v}"
+      - name: checksums
+        run: cd dist && shasum -a 256 xcslot-darwin-arm64 xcslot-darwin-x64 > checksums.txt
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" dist/xcslot-darwin-arm64 dist/xcslot-darwin-x64 dist/checksums.txt --clobber
+      - name: Homebrew tap
+        env:
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
+        run: sh .github/scripts/tap.sh "$GITHUB_REF_NAME" dist/checksums.txt

@@ -1,0 +1,83 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          filter: blob:none
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      # One job for the small checks, and it runs all of them so every failure is listed at once.
+      # Each has its own time budget and fails when it goes over.
+      - name: format, types, README tables
+        run: |
+          failed=0
+          timeout 1 bun fmt --check || { echo "::error::bun fmt --check failed or took over 1 s"; failed=1; }
+          timeout 5 bun check || { echo "::error::bun check failed or took over 5 s"; failed=1; }
+          timeout 5 bun scripts/docs.ts --check || { echo "::error::README tables are stale"; failed=1; }
+          exit $failed
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          filter: blob:none
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: timeout 30 bun test --randomize
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          filter: blob:none
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: timeout 35 bun scripts/build.ts
+
+  # Real xcodebuild, APFS clones and dsymutil. There is no merge queue on a personal account, so this is a
+  # required check on the pull request itself; the three jobs above still answer within a minute.
+  macos:
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          filter: blob:none
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun test --randomize
+      - run: bun test test/e2e.test.ts
+        env:
+          XCSLOT_E2E: "1"
+      - name: the compiled binary on a Mac
+        run: |
+          bun scripts/build.ts --target host
+          ./dist/xcslot doctor

@@ -1,0 +1,81 @@
+import { describe, expect, test } from "bun:test";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { addWorktree, cli, makeRepo, scratch, sh, write } from "./helpers.ts";
+
+// Real xcodebuild, real APFS clones: minutes, not seconds, so it runs only where asked (the macOS CI job).
+const enabled = process.env.XCSLOT_E2E === "1" && process.platform === "darwin" && Bun.which("xcodebuild") !== null;
+
+const PACKAGE = `// swift-tools-version:5.9
+import PackageDescription
+let package = Package(name: "demo", targets: [.executableTarget(name: "demo")])
+`;
+const GREETER = `func greeting(_ name: String) -> String {
+  let text = "hello, " + name
+  return text
+}
+`;
+const BUILD = ["xcodebuild", "-scheme", "demo", "-destination", "platform=macOS", "build"];
+const compiled = (output: string) => output.split("\n").filter((line) => line.startsWith("SwiftCompile ")).length;
+
+describe.skipIf(!enabled)("with real xcodebuild", () => {
+  test("a fresh worktree compiles nothing, an edit compiles, a diagnostic names the worktree, products debug correctly", async () => {
+    const repo = makeRepo(
+      {
+        "Package.swift": PACKAGE,
+        "Sources/demo/main.swift": 'print(greeting("slot"))\n',
+        "Sources/demo/Greeter.swift": GREETER,
+        ".gitignore": ".build/\nout/\n",
+      },
+      "demo",
+    );
+    const home = scratch();
+    const first = addWorktree(repo, "first");
+    const second = addWorktree(repo, "second");
+
+    const cold = await cli(BUILD, { cwd: first, home });
+    expect(cold.code, cold.stdout.slice(-2000)).toBe(0);
+    expect(compiled(cold.stdout)).toBeGreaterThan(0);
+
+    const warm = await cli(BUILD, { cwd: second, home });
+    expect(warm.code).toBe(0);
+    expect(compiled(warm.stdout)).toBe(0);
+    expect(warm.stderr).toContain("slot 1: synced 0 changed files");
+
+    write(second, { "Sources/demo/Greeter.swift": GREETER.replace("hello", "good day") });
+    const edited = await cli(BUILD, { cwd: second, home });
+    expect(edited.code).toBe(0);
+    expect(compiled(edited.stdout)).toBeGreaterThan(0);
+
+    const out = await cli(["xcodebuild", "--products-to", "out", ...BUILD.slice(1)], { cwd: second, home });
+    expect(out.code).toBe(0);
+    const config = readdirSync(join(second, "out")).find((name) => name.startsWith("Debug")) as string;
+    const binary = join(second, "out", config, "demo");
+    expect(sh(second, binary)).toBe("good day, slot\n");
+    const plists = readdirSync(join(`${binary}.dSYM`, "Contents", "Resources")).filter((name) =>
+      name.endsWith(".plist"),
+    );
+    expect(readFileSync(join(`${binary}.dSYM`, "Contents", "Resources", plists[0] as string), "utf8")).toContain(
+      second,
+    );
+
+    write(second, { "Sources/demo/Greeter.swift": `${GREETER}let broken: Int = "oops"\n` });
+    const failed = await cli(BUILD, { cwd: second, home });
+    expect(failed.code).toBe(65);
+    const diagnostics = (failed.stdout + failed.stderr).split("\n").filter((line) => line.includes(": error:"));
+    expect(diagnostics[0]).toStartWith(`${second}/Sources/demo/Greeter.swift:5:19: error:`);
+
+    // The slot has since been rebuilt from a broken tree; the handed-out binary must still debug by worktree paths.
+    const lldb = sh(
+      second,
+      "xcrun",
+      "lldb",
+      "-b",
+      "-o",
+      `breakpoint set --file ${second}/Sources/demo/Greeter.swift --line 2`,
+      binary,
+    );
+    expect(lldb).toMatch(/Breakpoint 1: where = demo`.*Greeter\.swift:2/);
+    expect(existsSync(join(home, "slots"))).toBe(true);
+  }, 600_000);
+});

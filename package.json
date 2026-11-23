@@ -1,0 +1,27 @@
+{
+  "name": "xcslot",
+  "version": "0.1.0",
+  "description": "Warm Xcode build slots for parallel coding agents",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "packageManager": "bun@1.4.5",
+  "bin": {
+    "xcslot": "src/bin.ts"
+  },
+  "scripts": {
+    "xcslot": "bun src/bin.ts",
+    "verify": "bun fmt --check && bun check && bun scripts/docs.ts --check && bun test",
+    "docs": "bun scripts/docs.ts",
+    "build": "bun scripts/build.ts"
+  },
+  "dependencies": {
+    "@commander-js/extra-typings": "^15.1.0",
+    "commander": "^15.1.0",
+    "neverthrow": "^8.2.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4"
+  }
+}
