@@ -8,14 +8,18 @@ const enabled = process.env.XCSLOT_E2E === "1" && process.platform === "darwin" 
 
 const PACKAGE = `// swift-tools-version:5.9
 import PackageDescription
-let package = Package(name: "demo", targets: [.executableTarget(name: "demo")])
+let package = Package(
+  name: "demo",
+  products: [.library(name: "Greeter", type: .dynamic, targets: ["Greeter"])],
+  targets: [.target(name: "Greeter"), .executableTarget(name: "demo", dependencies: ["Greeter"])]
+)
 `;
-const GREETER = `func greeting(_ name: String) -> String {
+const GREETER = `public func greeting(_ name: String) -> String {
   let text = "hello, " + name
   return text
 }
 `;
-const BUILD = ["xcodebuild", "-scheme", "demo", "-destination", "platform=macOS", "build"];
+const BUILD = ["xcodebuild", "-scheme", "demo-Package", "-destination", "platform=macOS", "build"];
 const compiled = (output: string) => output.split("\n").filter((line) => line.startsWith("SwiftCompile ")).length;
 
 describe.skipIf(!enabled)("with real xcodebuild", () => {
@@ -23,8 +27,8 @@ describe.skipIf(!enabled)("with real xcodebuild", () => {
     const repo = makeRepo(
       {
         "Package.swift": PACKAGE,
-        "Sources/demo/main.swift": 'print(greeting("slot"))\n',
-        "Sources/demo/Greeter.swift": GREETER,
+        "Sources/demo/main.swift": 'import Greeter\nprint(greeting("slot"))\n',
+        "Sources/Greeter/Greeter.swift": GREETER,
         ".gitignore": ".build/\nout/\n",
       },
       "demo",
@@ -42,7 +46,7 @@ describe.skipIf(!enabled)("with real xcodebuild", () => {
     expect(compiled(warm.stdout)).toBe(0);
     expect(warm.stderr).toContain("slot 1: synced 0 changed files");
 
-    write(second, { "Sources/demo/Greeter.swift": GREETER.replace("hello", "good day") });
+    write(second, { "Sources/Greeter/Greeter.swift": GREETER.replace("hello", "good day") });
     const edited = await cli(BUILD, { cwd: second, home });
     expect(edited.code).toBe(0);
     expect(compiled(edited.stdout)).toBeGreaterThan(0);
@@ -59,11 +63,16 @@ describe.skipIf(!enabled)("with real xcodebuild", () => {
       second,
     );
 
-    write(second, { "Sources/demo/Greeter.swift": `${GREETER}let broken: Int = "oops"\n` });
+    // A bundle's dSYM sits beside it: a file added inside a signed bundle breaks its seal.
+    const framework = join(second, "out", config, "PackageFrameworks", "Greeter.framework");
+    expect(existsSync(`${framework}.dSYM/Contents/Resources/DWARF/Greeter`)).toBe(true);
+    expect(readdirSync(framework, { recursive: true }).filter((name) => String(name).includes(".dSYM"))).toEqual([]);
+
+    write(second, { "Sources/Greeter/Greeter.swift": `${GREETER}let broken: Int = "oops"\n` });
     const failed = await cli(BUILD, { cwd: second, home });
     expect(failed.code).toBe(65);
     const diagnostics = (failed.stdout + failed.stderr).split("\n").filter((line) => line.includes(": error:"));
-    expect(diagnostics[0]).toStartWith(`${second}/Sources/demo/Greeter.swift:5:19: error:`);
+    expect(diagnostics[0]).toStartWith(`${second}/Sources/Greeter/Greeter.swift:5:19: error:`);
 
     // The slot has since been rebuilt from a broken tree; the handed-out binary must still debug by worktree paths.
     const lldb = sh(
@@ -72,7 +81,7 @@ describe.skipIf(!enabled)("with real xcodebuild", () => {
       "lldb",
       "-b",
       "-o",
-      `breakpoint set --file ${second}/Sources/demo/Greeter.swift --line 2`,
+      `breakpoint set --file ${second}/Sources/Greeter/Greeter.swift --line 2`,
       binary,
     );
     expect(lldb).toMatch(/Breakpoint 1: where = demo`.*Greeter\.swift:2/);

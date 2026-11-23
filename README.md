@@ -66,8 +66,9 @@ word goes to the wrapped command untouched.
   linter fixes) are copied back to the worktree and listed. A file that you also changed during the build is
   left alone and named.
 - **Products.** With `--products-to`, or when you pass your own `-derivedDataPath`, the products are cloned to
-  where you asked. Each binary gets a dSYM beside it with a record that maps source paths to your worktree, so
-  a debugger shows the right lines after the slot is reused.
+  where you asked. Each app, framework and plain binary gets a dSYM beside it (never inside a bundle, so
+  signatures stay valid) with a record that maps source paths to your worktree, so a debugger shows the right
+  lines after the slot is reused.
 
 ### Waiting
 
