@@ -1,0 +1,483 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #000;
+        --tile: #141416;
+        --tile-line: #232326;
+        --fg: #f5f5f7;
+        --muted: #86868b;
+        --hot: #ff9f0a;
+        --hot-2: #ff6a00;
+        --warm-glow: rgba(255, 140, 20, 0.35);
+        --green: #30d158;
+        --term-bg: #0d0d0f;
+        --display: -apple-system, "SF Pro Display", BlinkMacSystemFont, system-ui, sans-serif;
+        --mono: ui-monospace, "SF Mono", Menlo, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+      }
+      body {
+        width: 1600px;
+        height: 860px;
+        padding: 18px;
+        font-family: var(--display);
+        color: var(--fg);
+        -webkit-font-smoothing: antialiased;
+      }
+      .grid {
+        display: grid;
+        height: 100%;
+        gap: 18px;
+        grid-template-columns: 1.95fr 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+      }
+      .tile {
+        position: relative;
+        overflow: hidden;
+        background: var(--tile);
+        border-radius: 30px;
+        box-shadow: inset 0 0 0 1px var(--tile-line);
+        padding: 34px 36px;
+      }
+      .eyebrow {
+        font-size: 17px;
+        font-weight: 600;
+        color: var(--hot);
+        letter-spacing: -0.01em;
+      }
+      h2 {
+        margin: 6px 0 0;
+        font-size: 36px;
+        line-height: 1.08;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+      }
+      h2 span {
+        color: var(--muted);
+      }
+
+      /* Mac tile */
+      .mac {
+        grid-row: 1 / 3;
+        display: flex;
+        flex-direction: column;
+      }
+      .mac-wrap {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        margin-top: 18px;
+        margin-bottom: -6px;
+      }
+      .lid {
+        width: 690px;
+        height: 500px;
+        border-radius: 22px 22px 6px 6px;
+        background: #0a0a0b;
+        padding: 14px 14px 18px;
+        box-shadow:
+          inset 0 0 0 2px #2c2c2e,
+          0 0 0 1px #48484a;
+        position: relative;
+      }
+      .lid::before {
+        /* camera housing */
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 120px;
+        height: 14px;
+        background: #0a0a0b;
+        border-radius: 0 0 9px 9px;
+        z-index: 2;
+      }
+      .screen {
+        width: 100%;
+        height: 100%;
+        border-radius: 8px;
+        overflow: hidden;
+        background: radial-gradient(120% 140% at 15% 0%, #3a2a55 0%, #1b1530 38%, #0e0d1a 70%), #0e0d1a;
+        padding: 26px 22px 20px;
+        display: flex;
+      }
+      .base {
+        width: 820px;
+        height: 20px;
+        margin-top: -2px;
+        background: linear-gradient(#d9dadc, #a5a6a9 55%, #6d6e71);
+        border-radius: 2px 2px 14px 14px;
+        position: relative;
+      }
+      .base::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 150px;
+        height: 9px;
+        background: linear-gradient(#9a9b9e, #c6c7c9);
+        border-radius: 0 0 10px 10px;
+      }
+      .term {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        border-radius: 12px;
+        overflow: hidden;
+        background: var(--term-bg);
+        box-shadow:
+          0 0 0 1px #2e2e33,
+          0 24px 60px rgba(0, 0, 0, 0.6);
+      }
+      .bar {
+        height: 28px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        background: #19191c;
+        border-bottom: 1px solid #26262a;
+      }
+      .dot {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+      }
+      .panes {
+        flex: 1;
+        display: grid;
+        grid-template-rows: 1fr 1fr 1fr;
+      }
+      .pane {
+        padding: 12px 16px;
+        border-bottom: 1px solid #222226;
+        font: 12.2px/1.55 var(--mono);
+        color: #c7c7cc;
+        white-space: pre;
+        overflow: hidden;
+      }
+      .pane:last-child {
+        border-bottom: 0;
+      }
+      .wt {
+        color: #8e8e93;
+      }
+      .p {
+        color: var(--green);
+      }
+      .x {
+        color: var(--hot);
+      }
+      .ok {
+        color: #f5f5f7;
+        font-weight: 600;
+      }
+      .dim {
+        color: #6e6e73;
+      }
+
+      /* iPhone tile */
+      .phone {
+        grid-row: 1 / 3;
+        display: flex;
+        flex-direction: column;
+      }
+      .phone-wrap {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        align-items: flex-end;
+        margin-top: 24px;
+        margin-bottom: -150px;
+      }
+      .iphone {
+        width: 300px;
+        height: 620px;
+        border-radius: 56px;
+        padding: 11px;
+        background: linear-gradient(145deg, #4a4a4e, #1c1c1e 40%, #3a3a3d);
+        box-shadow:
+          inset 0 0 0 1.5px #6b6b70,
+          0 30px 60px rgba(0, 0, 0, 0.5);
+      }
+      .iscreen {
+        width: 100%;
+        height: 100%;
+        border-radius: 46px;
+        background: #000;
+        overflow: hidden;
+        position: relative;
+        padding: 16px 18px;
+      }
+      .island {
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 92px;
+        height: 27px;
+        background: #000;
+        border-radius: 20px;
+        box-shadow: 0 0 0 1px #111;
+        z-index: 2;
+      }
+      .status {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 2px 10px 0;
+      }
+      .app-title {
+        margin: 34px 4px 14px;
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 11px 4px;
+        border-bottom: 1px solid #1f1f22;
+      }
+      .ava {
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        flex: none;
+      }
+      .lines {
+        flex: 1;
+        display: grid;
+        gap: 6px;
+      }
+      .l1 {
+        height: 9px;
+        border-radius: 5px;
+        background: #3a3a3d;
+        width: 70%;
+      }
+      .l2 {
+        height: 8px;
+        border-radius: 5px;
+        background: #242427;
+        width: 92%;
+      }
+      .toast {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 168px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        white-space: nowrap;
+        padding: 9px 14px;
+        border-radius: 22px;
+        font-size: 13px;
+        font-weight: 600;
+        background: rgba(40, 40, 44, 0.92);
+        box-shadow:
+          0 0 0 1px #3a3a3e,
+          0 10px 30px rgba(0, 0, 0, 0.6);
+      }
+      .toast i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+        display: block;
+      }
+
+      /* number tile */
+      .num {
+        display: flex;
+        flex-direction: column;
+      }
+      .big {
+        margin-top: auto;
+        font-size: 150px;
+        line-height: 0.9;
+        font-weight: 700;
+        letter-spacing: -0.05em;
+        background: linear-gradient(180deg, #ffd27a, var(--hot) 45%, var(--hot-2));
+        -webkit-background-clip: text;
+        color: transparent;
+      }
+      .caption {
+        margin-top: 14px;
+        font-size: 19px;
+        line-height: 1.3;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .caption b {
+        color: var(--fg);
+        font-weight: 600;
+      }
+
+      /* slots tile */
+      .slots {
+        display: flex;
+        flex-direction: column;
+      }
+      .bays {
+        margin-top: auto;
+        display: grid;
+        gap: 11px;
+      }
+      .bay {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        height: 52px;
+        padding: 0 16px;
+        border-radius: 16px;
+        background: linear-gradient(90deg, rgba(255, 120, 10, 0.22), rgba(255, 160, 40, 0.06) 70%), #1c1c1f;
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 150, 40, 0.35),
+          0 0 26px var(--warm-glow);
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .bay .n {
+        font: 600 13px var(--mono);
+        color: var(--hot);
+        width: 18px;
+      }
+      .bay .who {
+        flex: 1;
+        font-family: var(--mono);
+        font-size: 13.5px;
+        font-weight: 500;
+        color: #e5e5ea;
+      }
+      .bay .st {
+        font-size: 13px;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .bay .st.busy {
+        color: var(--hot);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="grid">
+      <section class="tile mac">
+        <div class="eyebrow">Every agent, its own worktree</div>
+        <h2>Fresh worktree. <span>Warm build.</span></h2>
+        <div class="mac-wrap">
+          <div class="lid">
+            <div class="screen">
+              <div class="term">
+                <div class="bar">
+                  <i class="dot" style="background: #ff5f57"></i><i class="dot" style="background: #febc2e"></i
+                  ><i class="dot" style="background: #28c840"></i>
+                </div>
+                <div class="panes">
+                  <div class="pane">
+                    <span class="wt">~/app/.worktrees/fix-login</span> <span class="p">$</span> xcslot xcodebuild
+                    -scheme App build <span class="x">xcslot:</span> slot 1: synced 0 changed files in 0.3s
+                    <span class="ok">** BUILD SUCCEEDED **</span> <span class="x">xcslot:</span> slot 1: xcodebuild
+                    exited 0 after <span class="ok">4.8s</span>
+                  </div>
+                  <div class="pane">
+                    <span class="wt">~/app/.worktrees/add-search</span> <span class="p">$</span> xcslot xcodebuild
+                    -scheme App test <span class="x">xcslot:</span> slot 2: synced 3 changed files in 0.4s
+                    <span class="dim">SwiftCompile SearchView.swift</span>
+                    <span class="dim">Test Suite 'All tests' passed</span>
+                  </div>
+                  <div class="pane">
+                    <span class="wt">~/app/.worktrees/dark-mode</span> <span class="p">$</span> xcslot xcodebuild
+                    -scheme App build <span class="x">xcslot:</span> slot 3: synced 0 changed files in 0.3s
+                    <span class="ok">** BUILD SUCCEEDED **</span> <span class="x">xcslot:</span> slot 3: xcodebuild
+                    exited 0 after <span class="ok">5.3s</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="base"></div>
+        </div>
+      </section>
+
+      <section class="tile phone">
+        <div class="eyebrow">Same app, debuggable</div>
+        <h2>Products <span>come back to you.</span></h2>
+        <div class="phone-wrap">
+          <div class="iphone">
+            <div class="iscreen">
+              <div class="island"></div>
+              <div class="status"><span>9:41</span><span>●●●</span></div>
+              <div class="app-title">Inbox</div>
+              <div class="row">
+                <div class="ava" style="background: linear-gradient(135deg, #ff9f0a, #ff375f)"></div>
+                <div class="lines">
+                  <div class="l1"></div>
+                  <div class="l2"></div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="ava" style="background: linear-gradient(135deg, #64d2ff, #0a84ff)"></div>
+                <div class="lines">
+                  <div class="l1" style="width: 55%"></div>
+                  <div class="l2"></div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="ava" style="background: linear-gradient(135deg, #30d158, #00c7be)"></div>
+                <div class="lines">
+                  <div class="l1" style="width: 62%"></div>
+                  <div class="l2" style="width: 80%"></div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="ava" style="background: linear-gradient(135deg, #bf5af2, #5e5ce6)"></div>
+                <div class="lines">
+                  <div class="l1" style="width: 48%"></div>
+                  <div class="l2"></div>
+                </div>
+              </div>
+              <div class="toast"><i></i>Built in 4.8 s · dSYM attached</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tile num">
+        <div class="eyebrow">Recompiled</div>
+        <h2>Nothing <span>to redo.</span></h2>
+        <div class="big">0</div>
+        <div class="caption"><b>Swift files compiled</b> for a fresh worktree of a commit the slot already built.</div>
+      </section>
+
+      <section class="tile slots">
+        <div class="eyebrow">Shared by every agent</div>
+        <h2>Three <span>warm slots.</span></h2>
+        <div class="bays">
+          <div class="bay"><span class="n">1</span><span class="who">fix-login</span><span class="st">warm</span></div>
+          <div class="bay">
+            <span class="n">2</span><span class="who">add-search</span><span class="st busy">building</span>
+          </div>
+          <div class="bay"><span class="n">3</span><span class="who">dark-mode</span><span class="st">warm</span></div>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

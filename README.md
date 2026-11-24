@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/header.png" alt="A queue of cartridges sliding into a console with three build slots glowing warm, drawn in terminal characters" width="100%" />
+  <img src=".github/assets/header.png" alt="Four tiles: a Mac whose terminal shows three worktrees building through xcslot slots in seconds, an iPhone running the built app, zero Swift files recompiled, and three warm slots shared by the agents" width="100%" />
 </p>
 
 <h1 align="center">xcslot</h1>
@@ -35,8 +35,8 @@ code come back unchanged, with paths pointing at your worktree.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/benchmark-dark.svg" />
-    <img src=".github/assets/benchmark-light.svg" alt="Bar chart: the first build of a fresh worktree takes 85 s with its own DerivedData, 43 s with Xcode's compilation cache shared across worktrees, and 4.8 s through a warm xcslot slot" width="720" />
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/benchmark-dark.png" />
+    <img src=".github/assets/benchmark-light.png" alt="4.8 s for the first build of a fresh worktree through a warm slot, against 85 s with its own DerivedData and 43 s with Xcode's compilation cache shared across worktrees" width="100%" />
   </picture>
 </p>
 
