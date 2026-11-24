@@ -41,6 +41,10 @@ code come back unchanged, with paths pointing at your worktree.
   <i>Total <code>xcodebuild</code> time as fresh worktrees of <a href="https://github.com/Dimillian/IceCubesApp">IceCubesApp</a> arrive: 85 s for each cold build, 4.8 s through a warm slot, three slots. <a href="docs/benchmarks.md">How it was measured</a>.</i>
 </p>
 
+<p align="center">
+  <img src=".github/assets/works.png" alt="Works with Xcode projects and workspaces (the JSON .xcproj format included) with nothing to set up; Tuist projects, generated in the slot with tuist install and tuist generate, through mise when pinned; Swift packages, with swift build and swift test through xcslot run; and XcodeGen or any other generator, declared in one line of .xcslot.json" width="100%" />
+</p>
+
 ## Install
 
 ```sh
