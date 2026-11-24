@@ -2,19 +2,20 @@
 
 `xcslot` is a prefix for build commands: `xcslot xcodebuild …` mirrors the caller's git worktree into a slot at
 a fixed path and runs the command there, so Xcode's build data stays warm across worktrees. Its users are
-mostly coding agents. [README.md](README.md) is the product description; this file is what you need to change
-the code. `CLAUDE.md` is a symlink to it.
+mostly coding agents. [README.md](README.md) is the product description and [docs/](docs) the reference;
+this file is what you need to change the code. `CLAUDE.md` is a symlink to it.
 
 ## Commands
 
 ```sh
 bun install                         # also wires the git hooks (husky)
-bun run verify                      # format check, types, README tables, fast tests; the pre-push hook runs it
+bun run verify                      # format check, types, reference tables, fast tests; the pre-push hook runs it
 bun run xcslot -- <args>            # the CLI from source
 XCSLOT_E2E=1 bun test test/e2e.test.ts   # real xcodebuild on a generated Swift package; macOS, about 10 s warm
 bun fmt                             # format
-bun run docs                        # regenerate the README tables after changing src/commands/schemas.ts
+bun run docs                        # regenerate the tables in docs/reference.md after changing src/commands/schemas.ts
 bun run build                       # standalone binaries in dist/
+bun run art                         # re-render the README header and figures from scripts/art/*.html (needs Chrome)
 ```
 
 Use bun for everything. `bun lint` joins `verify` when Bun 1.4.6 is stable; it is not in 1.4.5.
@@ -41,14 +42,14 @@ Use bun for everything. `bun lint` joins `verify` when Bun 1.4.6 is stable; it i
 
 ## When you change something
 
-| Change                                             | Also do                                                                                                |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Any code                                           | `bun run verify`. Test observable behaviour through `cli()` in `test/helpers.ts`, with made-up data.   |
-| Sync, hand-out, argument rewriting, output mapping | Run the end-to-end test; it is the only one that proves the build stays warm.                          |
-| A new error code                                   | Add it to `exitCodes` and `retryable`; the build fails until both have it. Add it to the README table. |
-| An output shape in `schemas.ts`                    | `bun run docs`; a test fails while the README is stale.                                                |
-| `skills/xcslot/SKILL.md`                           | Every `bash` line must be a real command with real options; a test checks them against the catalog.    |
-| A new command                                      | Wrap it in `describe(...)` with examples and errors, or it is missing from `xcslot commands`.          |
+| Change                                             | Also do                                                                                                                |
+| -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Any code                                           | `bun run verify`. Test observable behaviour through `cli()` in `test/helpers.ts`, with made-up data.                   |
+| Sync, hand-out, argument rewriting, output mapping | Run the end-to-end test; it is the only one that proves the build stays warm.                                          |
+| A new error code                                   | Add it to `exitCodes` and `retryable`; the build fails until both have it. Add it to the table in `docs/reference.md`. |
+| An output shape in `schemas.ts`                    | `bun run docs`; a test fails while `docs/reference.md` is stale.                                                       |
+| `skills/xcslot/SKILL.md`                           | Every `bash` line must be a real command with real options; a test checks them against the catalog.                    |
+| A new command                                      | Wrap it in `describe(...)` with examples and errors, or it is missing from `xcslot commands`.                          |
 
 ## Learned the hard way
 

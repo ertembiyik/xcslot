@@ -2,12 +2,12 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { version } from "../package.json" with { type: "json" };
-import { render } from "../scripts/docs.ts";
+import { REFERENCE, render } from "../scripts/docs.ts";
 import { scratch, sh } from "./helpers.ts";
 
-test("the README's output tables match the schemas", () => {
-  const readme = readFileSync("README.md", "utf8");
-  expect(render(readme)).toBe(readme);
+test("the reference's output tables match the schemas", () => {
+  const reference = readFileSync(REFERENCE, "utf8");
+  expect(render(reference)).toBe(reference);
 });
 
 test("the compiled binary starts, reports its version and prints the catalog as one JSON document", () => {

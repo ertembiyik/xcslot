@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --bg: #000;
+        --fg: #f5f5f7;
+        --muted: #86868b;
+        --faint: #6e6e73;
+        --axis: #3a3a3c;
+        --grey-line: #8e8e93;
+        --rule: #2c2c2e;
+        --display: -apple-system, "SF Pro Display", BlinkMacSystemFont, system-ui, sans-serif;
+      }
+      html,
+      body {
+        margin: 0;
+        background: var(--bg);
+      }
+      body {
+        width: 1600px;
+        height: 900px;
+        font-family: var(--display);
+        -webkit-font-smoothing: antialiased;
+        color: var(--fg);
+        position: relative;
+      }
+      svg {
+        position: absolute;
+        inset: 0;
+      }
+      .title {
+        position: absolute;
+        left: 80px;
+        top: 54px;
+        font-size: 46px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .panel {
+        position: absolute;
+        left: 1250px;
+        top: 250px;
+        width: 290px;
+        display: grid;
+        gap: 34px;
+      }
+      .stat {
+        display: grid;
+        gap: 4px;
+      }
+      .stat + .stat {
+        border-top: 1px solid var(--rule);
+        padding-top: 34px;
+      }
+      .up {
+        font-size: 22px;
+        line-height: 1.3;
+        color: var(--fg);
+        font-weight: 500;
+      }
+      .num {
+        font-size: 104px;
+        line-height: 1;
+        font-weight: 600;
+        letter-spacing: -0.04em;
+        background: linear-gradient(90deg, #5e5ce6, #0a84ff 60%, #64d2ff);
+        -webkit-background-clip: text;
+        color: transparent;
+      }
+      .num small {
+        font-size: 64px;
+        letter-spacing: -0.02em;
+      }
+      .cap {
+        font-size: 22px;
+        line-height: 1.3;
+        color: var(--fg);
+        font-weight: 500;
+      }
+      text {
+        font-family: var(--display);
+      }
+      .tick {
+        font-size: 20px;
+        fill: var(--faint);
+        font-variant-numeric: tabular-nums;
+      }
+      .axis-title {
+        font-size: 17px;
+        font-weight: 500;
+        fill: var(--faint);
+        letter-spacing: 0.08em;
+      }
+      .end {
+        font-size: 30px;
+        font-weight: 600;
+        fill: var(--fg);
+      }
+      .mark {
+        font-size: 28px;
+        font-weight: 600;
+        fill: var(--fg);
+      }
+      .callout {
+        font-size: 92px;
+        font-weight: 600;
+        letter-spacing: -0.04em;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="title">Build time vs. worktrees</div>
+    <svg id="chart" width="1600" height="900" viewBox="0 0 1600 900"></svg>
+    <div class="panel">
+      <div class="stat">
+        <span class="up">Up to</span><span class="num">17x</span
+        ><span class="cap">faster first build<br />of a fresh worktree</span>
+      </div>
+      <div class="stat">
+        <span class="up">Builds 12 worktrees in</span><span class="num">5<small> min</small></span
+        ><span class="cap">instead of 17</span>
+      </div>
+    </div>
+    <script>
+      // From the measured figures in docs/benchmarks.md: every plain build of a fresh worktree is cold (85 s);
+      // through xcslot each of the three slots builds cold once, then a fresh worktree takes 4.8 s.
+      const COLD = 85,
+        WARM = 4.8,
+        SLOTS = 3,
+        N = 12;
+      const plainAt = (n) => COLD * n;
+      const slotAt = (n) => COLD * Math.min(n, SLOTS) + WARM * Math.max(0, n - SLOTS);
+      const minutes = (s) => s / 60;
+
+      const box = { left: 170, right: 1110, top: 160, bottom: 770 };
+      const yMax = 18;
+      const x = (n) => box.left + (n / N) * (box.right - box.left);
+      const y = (m) => box.bottom - (m / yMax) * (box.bottom - box.top);
+
+      const before = SLOTS - 0.6,
+        after = SLOTS + 1.4;
+      const plainPath = `M${x(0)},${y(0)} L${x(N)},${y(minutes(plainAt(N)))}`;
+      const slotPath = `M${x(0)},${y(0)} L${x(before)},${y(minutes(slotAt(before)))} Q${x(SLOTS)},${y(minutes(slotAt(SLOTS)))} ${x(after)},${y(minutes(slotAt(after)))} L${x(N)},${y(minutes(slotAt(N)))}`;
+
+      const yTicks = [0, 5, 10, 15]
+        .map((m) => `<text class="tick" x="${box.left - 22}" y="${y(m) + 7}" text-anchor="end">${m}</text>`)
+        .join("");
+      const xTicks = [0, 3, 6, 9, 12]
+        .map((n) => `<text class="tick" x="${x(n)}" y="${box.bottom + 36}" text-anchor="middle">${n}</text>`)
+        .join("");
+
+      const endPlain = y(minutes(plainAt(N))),
+        endSlot = y(minutes(slotAt(N)));
+      const ratio = (plainAt(N) / slotAt(N)).toFixed(1);
+      const knee = y(minutes(slotAt(SLOTS)));
+      document.getElementById("chart").innerHTML = `
+    <defs>
+      <linearGradient id="hot" gradientUnits="userSpaceOnUse" x1="${x(0)}" y1="0" x2="${x(N)}" y2="0">
+        <stop offset="0" stop-color="#5e5ce6"/><stop offset="0.5" stop-color="#0a84ff"/><stop offset="1" stop-color="#64d2ff"/>
+      </linearGradient>
+      <linearGradient id="callout" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#5e5ce6"/><stop offset="0.6" stop-color="#0a84ff"/><stop offset="1" stop-color="#64d2ff"/>
+      </linearGradient>
+    </defs>
+    <line x1="${box.left}" y1="${box.top - 10}" x2="${box.left}" y2="${box.bottom}" stroke="var(--axis)" stroke-width="2"/>
+    <line x1="${box.left}" y1="${box.bottom}" x2="${box.right + 20}" y2="${box.bottom}" stroke="var(--axis)" stroke-width="2"/>
+    ${yTicks}${xTicks}
+    <text class="axis-title" transform="translate(${box.left - 78},${(box.top + box.bottom) / 2}) rotate(-90)" text-anchor="middle">MINUTES SPENT BUILDING (LOWER IS BETTER)</text>
+    <text class="axis-title" x="${(box.left + box.right) / 2}" y="${box.bottom + 82}" text-anchor="middle">FRESH WORKTREES, ONE PER AGENT TASK</text>
+
+    <line x1="${x(SLOTS)}" y1="${knee + 18}" x2="${x(SLOTS)}" y2="${box.bottom - 6}" stroke="#0a84ff" stroke-width="3" stroke-dasharray="2 10" stroke-linecap="round"/>
+    <text class="mark" x="${x(SLOTS) + 18}" y="${box.bottom - 24}">3 slots warm</text>
+
+    <line x1="${x(N)}" y1="${endPlain + 22}" x2="${x(N)}" y2="${endSlot - 22}" stroke="#f5f5f7" stroke-width="3" stroke-dasharray="2 10" stroke-linecap="round"/>
+    <text class="callout" x="${x(N) - 26}" y="${(endPlain + endSlot) / 2 + 32}" text-anchor="end" fill="url(#callout)">${ratio}x</text>
+
+    <path d="${plainPath}" fill="none" stroke="var(--grey-line)" stroke-width="8" stroke-linecap="round"/>
+    <path d="${slotPath}" fill="none" stroke="url(#hot)" stroke-width="8" stroke-linecap="round"/>
+    <text class="end" x="${x(N) - 10}" y="${endPlain - 26}" text-anchor="end">Plain xcodebuild</text>
+    <text class="end" x="${x(N) - 10}" y="${endSlot + 52}" text-anchor="end">xcslot</text>`;
+    </script>
+  </body>
+</html>

@@ -14,6 +14,7 @@
     "verify": "bun fmt --check && bun check && bun scripts/docs.ts --check && bun test",
     "docs": "bun scripts/docs.ts",
     "build": "bun scripts/build.ts",
+    "art": "bun scripts/art.ts",
     "prepare": "husky"
   },
   "dependencies": {
