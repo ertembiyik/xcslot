@@ -66,7 +66,7 @@ xcslot xcodebuild -scheme App build     # seconds: nothing to recompile
 The second build prints the usual `xcodebuild` output, plus two lines of its own on stderr:
 
 ```console
-$ xcslot xcodebuild -project IceCubesApp.xcodeproj -scheme IceCubesApp -destination 'generic/platform=iOS Simulator' build
+$ xcslot xcodebuild -scheme IceCubesApp build
 xcslot: slot 1: synced 0 changed files in 0.3s
 ** BUILD SUCCEEDED **
 xcslot: slot 1: xcodebuild exited 0 after 4.8s; products: ~/Library/Developer/xcslot/IceCubesApp-accf84b1/1/DerivedData/Build/Products (valid until the next build in slot 1); log: ~/Library/Developer/xcslot/IceCubesApp-accf84b1/logs/2026-11-24T04-56-12.256Z-slot1.log
