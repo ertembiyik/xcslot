@@ -219,3 +219,33 @@ test("only the newest logs are kept", () => {
   expect(kept.length).toBe(10);
   expect(kept[0]).toBe("2026-01-15.log");
 });
+
+test("a step that rewrites its own input is done for the input it was given and for the one it left", async () => {
+  const root = scratch();
+  write(root, { "deps.lock": "resolved by someone else" });
+  const step: PrepareStep = {
+    name: "resolve",
+    argv: ["resolve"],
+    cwd: root,
+    inputs: [join(root, "deps.lock")],
+    outputs: [],
+  };
+  let runs = 0;
+  const resolve = async () => {
+    runs++;
+    writeFileSync(join(root, "deps.lock"), "resolved here");
+    return 0;
+  };
+  const state = emptyState();
+  const log = { write: () => {} };
+  expect((await prepare([step], state, resolve, log))._unsafeUnwrap()).toEqual(["resolve"]);
+  expect((await prepare([step], state, resolve, log))._unsafeUnwrap()).toEqual([]);
+
+  // The next worktree still holds the lock file as it was committed.
+  writeFileSync(join(root, "deps.lock"), "resolved by someone else");
+  expect((await prepare([step], state, resolve, log))._unsafeUnwrap()).toEqual([]);
+
+  writeFileSync(join(root, "deps.lock"), "a new dependency");
+  expect((await prepare([step], state, resolve, log))._unsafeUnwrap()).toEqual(["resolve"]);
+  expect(runs).toBe(2);
+});

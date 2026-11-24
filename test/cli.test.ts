@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import skill from "../skills/xcslot/SKILL.md" with { type: "text" };
 import { splitWrapped } from "../src/run.ts";
@@ -168,4 +168,29 @@ test("the skill installs where asked, and every command it shows exists with the
     }
   }
   expect(existsSync(join(home, "slots"))).toBe(false);
+});
+
+test("a Tuist project is generated only for a command that touches it", async () => {
+  const repo = makeRepo({
+    "app/Tuist.swift": "",
+    "app/Project.swift": "",
+    "tools/cli/Package.swift": "",
+    "bin/tuist": '#!/bin/sh\necho "$@" >> "$TUIST_CALLS"\n',
+  });
+  chmodSync(join(repo, "bin/tuist"), 0o755);
+  const home = scratch();
+  const calls = join(home, "tuist-calls");
+  const env = { PATH: `${join(repo, "bin")}:${process.env.PATH}`, TUIST_CALLS: calls };
+  const generated = () => (existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n").length : 0);
+
+  expect((await cli(["run", "--", "true"], { cwd: join(repo, "tools/cli"), home, env })).code).toBe(0);
+  expect(generated()).toBe(0);
+
+  const named = await cli(["run", "--", "ls", "../../app/Project.swift"], { cwd: join(repo, "tools/cli"), home, env });
+  expect(named.stderr).toContain("xcslot: tuist generate");
+  expect(generated()).toBe(1);
+
+  expect((await cli(["run", "--", "true"], { cwd: join(repo, "app"), home, env })).stderr).toContain("tuist generate");
+  expect((await cli(["run", "--", "true"], { cwd: repo, home, env })).stderr).toContain("tuist generate");
+  expect(generated()).toBe(3);
 });

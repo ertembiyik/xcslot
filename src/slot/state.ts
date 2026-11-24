@@ -10,8 +10,8 @@ export const slotStateSchema = z.object({
   source: z.string().optional(),
   head: z.string().optional(),
   usedAt: z.number().optional(),
-  /** Input key of each prepare step that already ran in this slot. */
-  prepared: z.record(z.string(), z.string()).default({}),
+  /** Per prepare step that ran in this slot: the key of the inputs it was given and of the inputs it left. */
+  prepared: z.record(z.string(), z.union([z.array(z.string()), z.string().transform((key) => [key])])).default({}),
   /** Size and mtime of every mirrored file on both sides, as of the last sync. */
   files: z.record(z.string(), z.object({ src: fileStat, dst: fileStat })).default({}),
 });
