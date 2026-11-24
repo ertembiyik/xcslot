@@ -48,22 +48,33 @@ code come back unchanged, with paths pointing at your worktree.
 
 ```sh
 brew install ertembiyik/tap/xcslot
-xcslot doctor
 ```
 
-macOS, Apple silicon and Intel. `doctor` checks that everything xcslot needs is in place.
+macOS, Apple silicon and Intel. Then give your coding agents the skill that teaches them to build through
+xcslot:
+
+```sh
+npx skills add ertembiyik/xcslot -g
+```
+
+Without the skills CLI, xcslot writes the skill into a skills folder itself:
+
+```sh
+xcslot skill install --dir ~/.claude/skills
+```
+
+`xcslot doctor` checks that everything it needs is in place.
 
 ## Quick start
 
-```sh
-cd ~/code/app/.worktrees/fix-login
-xcslot xcodebuild -scheme App build     # a new slot's first build is a cold one
+In a worktree, run your usual build with `xcslot` in front. A new slot's first build is a cold one:
 
-cd ../add-search                        # another worktree, never built
-xcslot xcodebuild -scheme App build     # seconds: nothing to recompile
+```sh
+xcslot xcodebuild -scheme App build
 ```
 
-The second build prints the usual `xcodebuild` output, plus two lines of its own on stderr:
+Run the same command in another worktree that was never built. It takes seconds, because nothing needs
+recompiling, and prints two lines of its own on stderr:
 
 ```console
 $ xcslot xcodebuild -scheme IceCubesApp build
@@ -72,24 +83,17 @@ xcslot: slot 1: synced 0 changed files in 0.3s
 xcslot: slot 1: xcodebuild exited 0 after 4.8s; products: ~/Library/Developer/xcslot/IceCubesApp-accf84b1/1/DerivedData/Build/Products (valid until the next build in slot 1); log: ~/Library/Developer/xcslot/IceCubesApp-accf84b1/logs/2026-11-24T04-56-12.256Z-slot1.log
 ```
 
-Anything that is not `xcodebuild` goes through `run`:
-
-```sh
-xcslot run -- swift test                        # in the slot's copy of the current directory
-xcslot xcodebuild --products-to out -scheme App build   # keep the built app, with debug symbols
-xcslot status                                   # who holds which slot right now
-```
+| Command                                                 | What it does                                           |
+| ------------------------------------------------------- | ------------------------------------------------------ |
+| `xcslot run -- swift test`                              | Any other build command, in the slot's copy of the cwd |
+| `xcslot xcodebuild --products-to out -scheme App build` | Keeps the built app, with debug symbols                |
+| `xcslot status`                                         | Who holds which slot right now                         |
 
 ## For coding agents
 
 xcslot is built to be driven by an agent: it never prompts, it says who it is waiting for, and its own
-failures are one JSON object with a code, a hint and a safe next command.
-
-```sh
-npx skills add ertembiyik/xcslot -g              # or: xcslot skill install --dir ~/.claude/skills
-```
-
-The skill is four rules and fits in a screen. Without skills, one line in `AGENTS.md` does it:
+failures are one JSON object with a code, a hint and a safe next command. The skill from
+[Install](#install) is four rules and fits in a screen. Without skills, one line in `AGENTS.md` does it:
 
 ```md
 Build and test through xcslot: `xcslot xcodebuild <the usual arguments>`. `xcslot commands --json` lists the rest.

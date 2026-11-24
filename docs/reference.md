@@ -23,9 +23,9 @@ for an agent, with examples.
 `xcslot`'s own options are double-dashed and come right after the command word. Everything from the first other
 word goes to the wrapped command untouched.
 
-```sh
+```text
 xcslot xcodebuild --products-to build/out -scheme App -configuration Debug build
-#                 └── xcslot's ────────┘ └── xcodebuild's ───────────────────┘
+                  └── xcslot's ────────┘ └── xcodebuild's ───────────────────┘
 ```
 
 | Option                          | Meaning                                                                                                   |

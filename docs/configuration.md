@@ -50,11 +50,11 @@ another config file.
 
 A slot costs about what one DerivedData of the project costs, plus a checkout.
 
-```sh
-xcslot slots list --sizes        # what is there
-xcslot slots remove 3 --yes      # delete one slot
-xcslot slots remove --all --yes  # delete this repository's slots; the next build is a cold one
-```
+| Command                           | What it does                                                  |
+| --------------------------------- | ------------------------------------------------------------- |
+| `xcslot slots list --sizes`       | Shows what is there and how big it is                         |
+| `xcslot slots remove 3 --yes`     | Deletes one slot                                              |
+| `xcslot slots remove --all --yes` | Deletes this repository's slots; the next build is a cold one |
 
 ## Environment a wrapped command sees
 

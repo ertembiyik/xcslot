@@ -58,16 +58,26 @@ near 20, so every figure is slower:
 
 ## Measure your own project
 
+Make two fresh worktrees of the same commit:
+
 ```sh
-git worktree add --detach ../bench-a HEAD && git worktree add --detach ../bench-b HEAD
-
-cd ../bench-a
-time xcodebuild -scheme App -derivedDataPath ./DerivedData build   # cold, for reference
-time xcslot xcodebuild -scheme App build                           # a new slot's first build: cold too
-
-cd ../bench-b
-time xcslot xcodebuild -scheme App build                           # a fresh worktree through the warm slot
+git worktree add --detach ../bench-a HEAD
+git worktree add --detach ../bench-b HEAD
 ```
 
-The third command is the number that matters. Count compiled files with
-`xcslot xcodebuild … | grep -c '^SwiftCompile '`; a warm slot prints 0.
+In the first, time a cold build for reference, then a new slot's first build, which is cold too:
+
+```sh
+cd ../bench-a
+time xcodebuild -scheme App -derivedDataPath ./DerivedData build
+time xcslot xcodebuild -scheme App build
+```
+
+In the second, time the build through the now-warm slot. This is the number that matters:
+
+```sh
+cd ../bench-b
+time xcslot xcodebuild -scheme App build
+```
+
+To count compiled files, pipe the build into `grep -c '^SwiftCompile '`; a warm slot prints 0.
