@@ -1,0 +1,1 @@
+bun fmt --check || { echo "pre-commit: run \`bun fmt\`, stage the result and commit again" >&2; exit 1; }

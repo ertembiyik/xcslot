@@ -8,8 +8,8 @@ the code. `CLAUDE.md` is a symlink to it.
 ## Commands
 
 ```sh
-bun install
-bun run verify                      # format check, types, README tables, fast tests: run before every push
+bun install                         # also wires the git hooks (husky)
+bun run verify                      # format check, types, README tables, fast tests; the pre-push hook runs it
 bun run xcslot -- <args>            # the CLI from source
 XCSLOT_E2E=1 bun test test/e2e.test.ts   # real xcodebuild on a generated Swift package; macOS, about 10 s warm
 bun fmt                             # format

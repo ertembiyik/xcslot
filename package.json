@@ -13,7 +13,8 @@
     "xcslot": "bun src/bin.ts",
     "verify": "bun fmt --check && bun check && bun scripts/docs.ts --check && bun test",
     "docs": "bun scripts/docs.ts",
-    "build": "bun scripts/build.ts"
+    "build": "bun scripts/build.ts",
+    "prepare": "husky"
   },
   "dependencies": {
     "@commander-js/extra-typings": "^15.1.0",
@@ -22,6 +23,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/bun": "^1.4.4"
+    "@types/bun": "^1.4.4",
+    "husky": "^9.1.7"
   }
 }
