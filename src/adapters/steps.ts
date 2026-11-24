@@ -18,16 +18,21 @@ function tuistCommand(slotSrc: string, projectDir: string): string[] {
   return pinned ? ["mise", "exec", "--", "tuist"] : ["tuist"];
 }
 
+/** Whether `path` is `dir` or lies under it; both are relative to the repository root, which is ".". */
+const within = (path: string, dir: string) => dir === "." || path === dir || path.startsWith(`${dir}/`);
+
 /**
  * A Tuist project is generated inside the slot: the generated workspace holds absolute paths, and `tuist
  * install` checkouts do too, so neither can be mirrored from the worktree.
  */
-function tuistSteps(slotSrc: string, tracked: readonly string[]): PrepareStep[] {
+function tuistSteps(slotSrc: string, tracked: readonly string[], touched: readonly string[]): PrepareStep[] {
   const manifest = tracked
     .filter((path) => path === "Tuist.swift" || path.endsWith("/Tuist.swift"))
     .sort((a, b) => a.split("/").length - b.split("/").length)[0];
   if (manifest === undefined) return [];
   const rel = dirname(manifest);
+  // A command run elsewhere in the repository, such as `swift build` in a standalone package, needs no project.
+  if (!touched.some((path) => within(path, rel) || within(rel, path))) return [];
   const projectDir = join(slotSrc, rel);
   const inProject = tracked.filter((path) => rel === "." || path.startsWith(`${rel}/`));
   const tuist = tuistCommand(slotSrc, projectDir);
@@ -55,10 +60,17 @@ function tuistSteps(slotSrc: string, tracked: readonly string[]): PrepareStep[] 
   return steps;
 }
 
-/** The steps a slot needs before a build: Tuist's when the repository is a Tuist project, then the project's own. */
-export function prepareSteps(slotSrc: string, config: ProjectConfig): Result<PrepareStep[], XcslotError> {
+/**
+ * The steps a slot needs before a command: Tuist's when the command touches the Tuist project, then the
+ * project's own. `touched` holds the repository-relative directory the command runs in and the paths it names.
+ */
+export function prepareSteps(
+  slotSrc: string,
+  config: ProjectConfig,
+  touched: readonly string[],
+): Result<PrepareStep[], XcslotError> {
   return gitList(slotSrc, "ls-files", "-co", "--exclude-standard").andThen((tracked) => {
-    const steps = tuistSteps(slotSrc, tracked);
+    const steps = tuistSteps(slotSrc, tracked, touched);
     for (const step of config.prepare) {
       const inputs = gitList(slotSrc, "ls-files", "-co", "--exclude-standard", "--", ...step.inputs);
       if (inputs.isErr()) return inputs.map(() => steps);

@@ -69,7 +69,8 @@ export async function prepare(
     const before = generatedFiles(step.cwd, step.outputs);
     const present = (step.outputs.length === 0 || before.length > 0) && (step.requires ?? []).every(existsSync);
     // A step after one that just ran runs too: what it reads may be what that step produced.
-    if (ran.length === 0 && state.prepared[step.name] === keyOf(step) && present) continue;
+    const given = keyOf(step);
+    if (ran.length === 0 && state.prepared[step.name]?.includes(given) && present) continue;
     const snapshot = new Map(
       before.map((path) => {
         const stats = lstatSync(path);
@@ -89,8 +90,9 @@ export async function prepare(
     const kept = restoreMtimes(snapshot, hashFile);
     if (snapshot.size > 0)
       log.write(`xcslot: ${step.name} left ${kept} of ${snapshot.size} generated files unchanged\n`);
-    // Keyed after the run: a step may rewrite its own inputs, as a resolver does with its lock file.
-    state.prepared[step.name] = keyOf(step);
+    // A step may rewrite its own inputs, as a resolver does with its lock file. Both versions count as done,
+    // so a worktree that still holds the earlier lock file does not run the step again.
+    state.prepared[step.name] = [...new Set([given, keyOf(step)])];
     ran.push(step.name);
   }
   return ok(ran);

@@ -1,6 +1,6 @@
 import { createWriteStream, existsSync, mkdirSync } from "node:fs";
 import { constants } from "node:os";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { prepareSteps } from "../adapters/steps.ts";
 import type { Deps } from "../context.ts";
 import { loadProjectConfig, loadUserConfig } from "../lib/config.ts";
@@ -86,6 +86,20 @@ async function spawnThrough(deps: Deps, child: Child): Promise<Result<number, Xc
 
 const seconds = (ms: number) => (ms / 1000).toFixed(1);
 
+/** The directory a command runs in and the worktree paths its arguments name, relative to the repository root. */
+function touchedPaths(from: string, worktree: string, args: readonly string[]): string[] {
+  const inside = (path: string) => {
+    const rel = relative(worktree, path);
+    return rel.startsWith("..") || isAbsolute(rel) ? undefined : rel || ".";
+  };
+  const named = args
+    .flatMap((arg) => [arg, arg.slice(arg.indexOf("=") + 1)])
+    .filter((value) => value.includes("/"))
+    .map((value) => inside(resolve(from, value)));
+  // A directory that cannot be placed counts as the root, so the project's steps still run.
+  return [inside(from) ?? ".", ...named].filter((path) => path !== undefined);
+}
+
 /** Syncs the worktree into a free slot, runs the command there with the slot's warm build data, and hands results back. */
 export async function runInSlot(
   deps: Deps,
@@ -152,7 +166,7 @@ export async function runInSlot(
     writeState(slot.state, state);
 
     const map = createPathMapper(slot.src, repo.value.worktree);
-    const steps = prepareSteps(slot.src, project.value);
+    const steps = prepareSteps(slot.src, project.value, touchedPaths(from, repo.value.worktree, args));
     if (steps.isErr()) return err(steps.error);
     let stepFailure: XcslotError | undefined;
     const prepared = await prepare(
