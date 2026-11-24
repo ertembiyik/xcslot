@@ -34,14 +34,11 @@ Put `xcslot` in front of the command you already run. Every argument passes thro
 code come back unchanged, with paths pointing at your worktree.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/stats-dark.png" />
-    <img src=".github/assets/stats-light.png" alt="Up to 17x faster first build of a fresh worktree. 0 Swift files recompiled when the slot already built that commit. A worktree mirrored in 0.3 s, copying only the files that changed." width="100%" />
-  </picture>
+  <img src=".github/assets/chart.png" alt="Build time against fresh worktrees: plain xcodebuild climbs steadily, 85 s for every new worktree; through xcslot the line flattens after the three slots' first builds, about 5 s per worktree after that" width="100%" />
 </p>
 
 <p align="center">
-  <i>Measured on <a href="https://github.com/Dimillian/IceCubesApp">IceCubesApp</a> (1,510 Swift files): 85 s cold, 4.8 s through a warm slot. <a href="docs/benchmarks.md">How it was measured</a>.</i>
+  <i>Total <code>xcodebuild</code> time as fresh worktrees of <a href="https://github.com/Dimillian/IceCubesApp">IceCubesApp</a> arrive: 85 s for each cold build, 4.8 s through a warm slot, three slots. <a href="docs/benchmarks.md">How it was measured</a>.</i>
 </p>
 
 ## Install

@@ -1,5 +1,5 @@
 // Renders the README's header and figures from scripts/art/*.html with headless Chrome: `bun scripts/art.ts`.
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -27,12 +27,7 @@ function shoot(html: string, out: string, width: number, height: number, scale: 
 
 try {
   shoot(resolve("scripts/art/header.html"), ".github/assets/header.png", 1600, 800, 1.5, false);
-  const stats = readFileSync("scripts/art/stats.html", "utf8");
-  for (const theme of ["light", "dark"]) {
-    const page = join(work, `stats-${theme}.html`);
-    writeFileSync(page, stats.replace('class="THEME"', `class="${theme}"`));
-    shoot(page, `.github/assets/stats-${theme}.png`, 880, 200, 2, true);
-  }
+  shoot(resolve("scripts/art/chart.html"), ".github/assets/chart.png", 1600, 900, 1.25, false);
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
