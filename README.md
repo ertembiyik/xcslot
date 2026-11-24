@@ -11,10 +11,10 @@
     <img src="https://img.shields.io/badge/Homebrew-ertembiyik%2Ftap%2Fxcslot-f38020?logo=homebrew&logoColor=white" alt="Install with Homebrew" />
   </a>
   <a href="https://github.com/ertembiyik/xcslot/releases/latest">
-    <img src="https://img.shields.io/github/v/release/ertembiyik/xcslot?label=Release" alt="Latest release" />
+    <img src="https://img.shields.io/badge/macOS-Apple_silicon_%7C_Intel-555?logo=apple&logoColor=white" alt="macOS on Apple silicon and Intel" />
   </a>
   <a href="https://github.com/ertembiyik/xcslot/actions/workflows/ci.yml">
-    <img src="https://img.shields.io/github/actions/workflow/status/ertembiyik/xcslot/ci.yml?branch=main&label=CI" alt="CI status" />
+    <img src="https://github.com/ertembiyik/xcslot/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status" />
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" />

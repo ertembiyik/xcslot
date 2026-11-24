@@ -87,7 +87,7 @@
         background: #1c1c1e;
         padding: 34px 30px 0;
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         gap: 26px;
       }
       .win {
@@ -118,6 +118,8 @@
         color: var(--muted);
       }
       .body {
+        margin: 0;
+        overflow: hidden;
         padding: 22px 24px 6px;
         font: 18px/1.7 var(--mono);
         color: #c7c7cc;
@@ -133,6 +135,7 @@
         color: var(--blue);
       }
       .track {
+        display: block;
         margin: 10px 0 4px;
         height: 8px;
         border-radius: 4px;
@@ -140,6 +143,7 @@
         overflow: hidden;
       }
       .fill {
+        display: block;
         height: 100%;
         width: 100%;
         background: #6e6e73;
@@ -188,12 +192,11 @@
           <div class="bar">
             <i class="d"></i><i class="d"></i><i class="d"></i><span class="ttl">Without xcslot</span>
           </div>
-          <div class="body">
-            <span class="p">$</span> git worktree add ../add-search <span class="p">$</span> cd ../add-search
-            <span class="p">$</span> <span class="hl">xcodebuild -scheme App build</span>
-            Compiling 1,510 Swift files
-            <div class="track"><div class="fill"></div></div>
-          </div>
+          <pre class="body"><span class="p">$</span> git worktree add ../add-search
+<span class="p">$</span> cd ../add-search
+<span class="p">$</span> <span class="hl">xcodebuild -scheme App build</span>
+Compiling 1,510 Swift files
+<span class="track"><span class="fill"></span></span></pre>
           <div class="result">
             <span class="big slow">85 s</span
             ><span class="note"><b>Builds from scratch</b>new path, new timestamps</span>
@@ -201,11 +204,11 @@
         </div>
         <div class="win">
           <div class="bar"><i class="d"></i><i class="d"></i><i class="d"></i><span class="ttl">With xcslot</span></div>
-          <div class="body">
-            <span class="p">$</span> git worktree add ../add-search <span class="p">$</span> cd ../add-search
-            <span class="p">$</span> <span class="hl">xcslot xcodebuild -scheme App build</span>
-            <span class="b">xcslot:</span> slot 1: synced 0 changed files Compiling 0 Swift files
-          </div>
+          <pre class="body"><span class="p">$</span> git worktree add ../add-search
+<span class="p">$</span> cd ../add-search
+<span class="p">$</span> <span class="hl">xcslot xcodebuild -scheme App build</span>
+<span class="b">xcslot:</span> slot 1: synced 0 changed files
+Compiling 0 Swift files</pre>
           <div class="result">
             <span class="big fast">4.8 s</span
             ><span class="note"><b>Builds incrementally</b>in a warm slot at a fixed path</span>

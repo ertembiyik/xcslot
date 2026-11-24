@@ -61,6 +61,8 @@ Use bun for everything. `bun lint` joins `verify` when Bun 1.4.6 is stable; it i
 - **Debug builds keep debug info in the slot's object files.** After the slot is rebuilt, a debugger attached
   to an older product shows wrong lines without failing. Products are handed out with a dSYM for that reason.
 - **Debug app bundles keep their code in `<Name>.debug.dylib`**, not in the small launcher executable.
+- **`bun fmt` reflows HTML text.** Terminal text in `scripts/art/*.html` lives in `<pre>`, which it leaves alone;
+  anything else loses its line breaks, and the next `bun run art` renders it as one line.
 - **`xcodebuild -list` without `-derivedDataPath` writes package checkouts into Xcode's default DerivedData.**
   Metadata queries go through the slot too.
 
