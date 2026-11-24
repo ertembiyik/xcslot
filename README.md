@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/header.png" alt="Three build slots glowing warm, drawn in terminal characters, with git branches growing out of them" width="100%" />
+  <img src=".github/assets/header.png" alt="Five terminal prompts wired into a rack of three build slots glowing warm, drawn in terminal characters" width="100%" />
 </p>
 
 <h1 align="center">xcslot</h1>
