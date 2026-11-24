@@ -34,7 +34,7 @@ Put `xcslot` in front of the command you already run. Every argument passes thro
 code come back unchanged, with paths pointing at your worktree.
 
 <p align="center">
-  <img src=".github/assets/chart.png" alt="Build time against fresh worktrees: plain xcodebuild climbs steadily, 85 s for every new worktree; through xcslot the line flattens after the three slots' first builds, about 5 s per worktree after that" width="100%" />
+  <img src=".github/assets/chart.png" alt="Build time against fresh worktrees, in minutes: plain xcodebuild climbs to 17 minutes over 12 worktrees; through xcslot the line flattens once the three slots are warm and ends near 5 minutes, 3.4 times less. Beside it: up to 17x faster first build of a fresh worktree, and 12 worktrees built in 5 minutes instead of 17" width="100%" />
 </p>
 
 <p align="center">
