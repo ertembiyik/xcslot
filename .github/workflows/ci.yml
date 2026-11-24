@@ -26,12 +26,12 @@ jobs:
       - run: bun install --frozen-lockfile
       # One job for the small checks, and it runs all of them so every failure is listed at once.
       # Each has its own time budget and fails when it goes over.
-      - name: format, types, README tables
+      - name: format, types, reference tables
         run: |
           failed=0
           timeout 1 bun fmt --check || { echo "::error::bun fmt --check failed or took over 1 s"; failed=1; }
           timeout 5 bun check || { echo "::error::bun check failed or took over 5 s"; failed=1; }
-          timeout 5 bun scripts/docs.ts --check || { echo "::error::README tables are stale"; failed=1; }
+          timeout 5 bun scripts/docs.ts --check || { echo "::error::docs/reference.md tables are stale"; failed=1; }
           exit $failed
 
   test:

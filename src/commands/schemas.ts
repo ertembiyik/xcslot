@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Output contracts. The README's field tables are generated from these, and a test fails when they drift. */
+/** Output contracts. The field tables in docs/reference.md are generated from these, and a test fails when they drift. */
 export const holderSchema = z.object({
   pid: z.int().describe("Process that holds it"),
   label: z.string().describe("The command it runs and the worktree it runs for"),
