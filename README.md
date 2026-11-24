@@ -8,16 +8,16 @@
 
 <p align="center">
   <a href="#install">
-    <img src="https://img.shields.io/badge/Homebrew-ertembiyik%2Ftap%2Fxcslot-f38020?logo=homebrew&logoColor=white" alt="Install with Homebrew" />
+    <img src=".github/assets/chips/homebrew.svg" alt="Install with Homebrew" />
   </a>
   <a href="https://github.com/ertembiyik/xcslot/releases/latest">
-    <img src="https://img.shields.io/badge/macOS-Apple_silicon_%7C_Intel-555?logo=apple&logoColor=white" alt="macOS on Apple silicon and Intel" />
+    <img src=".github/assets/chips/macos.svg" alt="macOS on Apple silicon and Intel" />
   </a>
   <a href="https://github.com/ertembiyik/xcslot/actions/workflows/ci.yml">
     <img src="https://github.com/ertembiyik/xcslot/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status" />
   </a>
   <a href="LICENSE">
-    <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" />
+    <img src=".github/assets/chips/license.svg" alt="MIT License" />
   </a>
 </p>
 

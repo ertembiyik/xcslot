@@ -1,5 +1,5 @@
-// Renders the README's header and figures from scripts/art/*.html with headless Chrome: `bun scripts/art.ts`.
-import { mkdtempSync, rmSync } from "node:fs";
+// Renders the README's header, figures and chips from scripts/art/*.html with headless Chrome: `bun scripts/art.ts`.
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -29,6 +29,25 @@ try {
   shoot(resolve("scripts/art/header.html"), ".github/assets/header.png", 1600, 800, 1.5, false);
   shoot(resolve("scripts/art/chart.html"), ".github/assets/chart.png", 1600, 900, 1.25, false);
   shoot(resolve("scripts/art/works.html"), ".github/assets/works.png", 1600, 500, 1.25, false);
+  const dumped = Bun.spawnSync(
+    [
+      CHROME,
+      "--headless=new",
+      "--disable-gpu",
+      `--user-data-dir=${join(work, "profile")}`,
+      "--dump-dom",
+      `file://${resolve("scripts/art/chips.html")}`,
+    ],
+    { stdout: "pipe", stderr: "ignore" },
+  );
+  const json = dumped.stdout.toString().match(/<pre id="out">([^<]*)<\/pre>/)?.[1];
+  if (dumped.exitCode !== 0 || json === undefined) throw new Error("Chrome did not render scripts/art/chips.html");
+  const unescape = (text: string) =>
+    text.replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&quot;", '"').replaceAll("&amp;", "&");
+  mkdirSync(".github/assets/chips", { recursive: true });
+  for (const chip of JSON.parse(unescape(json)) as { file: string; svg: string }[]) {
+    writeFileSync(`.github/assets/chips/${chip.file}.svg`, chip.svg);
+  }
 } finally {
   rmSync(work, { recursive: true, force: true });
 }
