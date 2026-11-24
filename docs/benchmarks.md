@@ -2,6 +2,11 @@
 
 What a fresh worktree's first build costs, and what each way of avoiding it buys.
 
+![Build time against fresh worktrees, in minutes: plain xcodebuild climbs to 17 minutes over 12 worktrees; through xcslot the line flattens once the three slots are warm and ends near 5 minutes, 3.4 times less](../.github/assets/chart.png)
+
+The chart is drawn from the figures below: 85 s for each cold build, 4.8 s for a fresh worktree through a warm
+slot, three slots, each building cold once.
+
 ## Setup
 
 - **Project:** [IceCubesApp](https://github.com/Dimillian/IceCubesApp) at commit `9efcb16`, a plain

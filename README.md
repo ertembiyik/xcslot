@@ -33,17 +33,9 @@ xcslot xcodebuild -scheme App -destination 'generic/platform=iOS Simulator' buil
 Put `xcslot` in front of the command you already run. Every argument passes through, and the output and exit
 code come back unchanged, with paths pointing at your worktree.
 
-<p align="center">
-  <img src=".github/assets/chart.png" alt="Build time against fresh worktrees, in minutes: plain xcodebuild climbs to 17 minutes over 12 worktrees; through xcslot the line flattens once the three slots are warm and ends near 5 minutes, 3.4 times less. Beside it: up to 17x faster first build of a fresh worktree, and 12 worktrees built in 5 minutes instead of 17" width="100%" />
-</p>
-
-<p align="center">
-  <i>Total <code>xcodebuild</code> time as fresh worktrees of <a href="https://github.com/Dimillian/IceCubesApp">IceCubesApp</a> arrive: 85 s for each cold build, 4.8 s through a warm slot, three slots. <a href="docs/benchmarks.md">How it was measured</a>.</i>
-</p>
-
-<p align="center">
-  <img src=".github/assets/works.png" alt="Works with Xcode projects and workspaces (the JSON .xcproj format included) with nothing to set up; Tuist projects, generated in the slot with tuist install and tuist generate, through mise when pinned; Swift packages, with swift build and swift test through xcslot run; and XcodeGen or any other generator, declared in one line of .xcslot.json" width="100%" />
-</p>
+Works with Xcode projects and workspaces, Tuist (generated inside the slot), Swift packages and any generator
+you declare in `.xcslot.json`. On [IceCubesApp](https://github.com/Dimillian/IceCubesApp), a fresh worktree's
+first build drops from 85 s to 4.8 s; [benchmarks](docs/benchmarks.md) has the method and more numbers.
 
 ## Install
 
@@ -114,8 +106,7 @@ them, and `-destination id=<udid>` passes straight through.
 - **Slots are shared.** A few per repository, with a machine-wide cap on builds at once. A busy slot is
   waited for, and the wait names the holder.
 
-Tuist projects are generated inside the slot; other generators are one entry in `.xcslot.json`. More in
-[How it works](docs/how-it-works.md).
+More in [How it works](docs/how-it-works.md), and per project type in [Configuration](docs/configuration.md).
 
 ## What it does not do
 

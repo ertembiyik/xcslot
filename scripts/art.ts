@@ -28,7 +28,6 @@ function shoot(html: string, out: string, width: number, height: number, scale: 
 try {
   shoot(resolve("scripts/art/header.html"), ".github/assets/header.png", 1600, 800, 1.5, false);
   shoot(resolve("scripts/art/chart.html"), ".github/assets/chart.png", 1600, 900, 1.25, false);
-  shoot(resolve("scripts/art/works.html"), ".github/assets/works.png", 1600, 500, 1.25, false);
   const dumped = Bun.spawnSync(
     [
       CHROME,
