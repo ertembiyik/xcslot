@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/header.png" alt="Four tiles: a Mac whose terminal shows three worktrees building through xcslot slots in seconds, an iPhone running the built app, zero Swift files recompiled, and three warm slots shared by the agents" width="100%" />
+  <img src=".github/assets/header.png" alt="Two terminals on a Mac building the same new worktree: plain xcodebuild compiles 1,510 Swift files in 85 s, xcslot xcodebuild compiles none in 4.8 s" width="100%" />
 </p>
 
 <h1 align="center">xcslot</h1>
@@ -35,13 +35,13 @@ code come back unchanged, with paths pointing at your worktree.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/benchmark-dark.png" />
-    <img src=".github/assets/benchmark-light.png" alt="4.8 s for the first build of a fresh worktree through a warm slot, against 85 s with its own DerivedData and 43 s with Xcode's compilation cache shared across worktrees" width="100%" />
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/stats-dark.png" />
+    <img src=".github/assets/stats-light.png" alt="Up to 17x faster first build of a fresh worktree. 0 Swift files recompiled when the slot already built that commit. A worktree mirrored in 0.3 s, copying only the files that changed." width="100%" />
   </picture>
 </p>
 
 <p align="center">
-  <i>First build of a fresh worktree of <a href="https://github.com/Dimillian/IceCubesApp">IceCubesApp</a> (1,510 Swift files). <a href="docs/benchmarks.md">How it was measured</a>.</i>
+  <i>Measured on <a href="https://github.com/Dimillian/IceCubesApp">IceCubesApp</a> (1,510 Swift files): 85 s cold, 4.8 s through a warm slot. <a href="docs/benchmarks.md">How it was measured</a>.</i>
 </p>
 
 ## Install

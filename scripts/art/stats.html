@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        --fg: #1d1d1f;
+        --muted: #6e6e73;
+        --line: #d2d2d7;
+        --display: -apple-system, "SF Pro Display", BlinkMacSystemFont, system-ui, sans-serif;
+      }
+      body.dark {
+        --fg: #f5f5f7;
+        --muted: #86868b;
+        --line: #3a3a3c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+      }
+      body {
+        width: 880px;
+        height: 200px;
+        padding: 20px 10px;
+        font-family: var(--display);
+        color: var(--fg);
+        -webkit-font-smoothing: antialiased;
+        display: grid;
+        grid-template-columns: 96px 1fr 1fr 1fr;
+        align-items: center;
+        column-gap: 34px;
+      }
+      .badge {
+        width: 96px;
+        height: 96px;
+        border-radius: 24px;
+        box-shadow: inset 0 0 0 3px var(--fg);
+        display: grid;
+        place-items: center;
+        font: 600 21px var(--display);
+        letter-spacing: -0.02em;
+      }
+      .stats {
+        display: contents;
+      }
+      .stat {
+        display: grid;
+        gap: 2px;
+        align-content: center;
+      }
+      .stat:nth-child(2) {
+        border-left: 1px solid var(--line);
+        padding-left: 34px;
+        margin-left: -1px;
+      }
+      .up {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .num {
+        font-size: 64px;
+        line-height: 1.05;
+        font-weight: 700;
+        letter-spacing: -0.035em;
+      }
+      .num small {
+        font-size: 40px;
+        letter-spacing: -0.02em;
+      }
+      .cap {
+        margin-top: 6px;
+        font-size: 15px;
+        line-height: 1.35;
+        color: var(--muted);
+        font-weight: 500;
+      }
+    </style>
+  </head>
+  <body class="THEME">
+    <div class="badge">xcslot</div>
+    <div class="stat">
+      <span class="up">Up to</span><span class="num">17x</span
+      ><span class="cap">faster first build<br />of a fresh worktree</span>
+    </div>
+    <div class="stat">
+      <span class="up">Recompiles</span><span class="num">0</span
+      ><span class="cap">Swift files when the slot<br />already built that commit</span>
+    </div>
+    <div class="stat">
+      <span class="up">Mirrors a worktree in</span><span class="num">0.3<small> s</small></span
+      ><span class="cap">copying only the files<br />that changed</span>
+    </div>
+  </body>
+</html>

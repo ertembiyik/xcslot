@@ -15,7 +15,7 @@ XCSLOT_E2E=1 bun test test/e2e.test.ts   # real xcodebuild on a generated Swift 
 bun fmt                             # format
 bun run docs                        # regenerate the tables in docs/reference.md after changing src/commands/schemas.ts
 bun run build                       # standalone binaries in dist/
-bun run art                         # re-render the README header and chart from scripts/art/*.html (needs Chrome)
+bun run art                         # re-render the README header and figures from scripts/art/*.html (needs Chrome)
 ```
 
 Use bun for everything. `bun lint` joins `verify` when Bun 1.4.6 is stable; it is not in 1.4.5.
