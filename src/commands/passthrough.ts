@@ -6,7 +6,7 @@ import type { Deps } from "../context.ts";
 import { loadProjectConfig, loadUserConfig } from "../lib/config.ts";
 import { failure, type XcslotError } from "../lib/errors.ts";
 import { configPath, headOf, logsDir, resolveRepo, slotsRoot } from "../lib/layout.ts";
-import { gitList, withoutGitRepositoryEnv } from "../lib/proc.ts";
+import { gitList, slotCommandEnv } from "../lib/proc.ts";
 import { err, ok, type Result } from "../lib/result.ts";
 import { acquirePermit, acquireSlot, ensureCheckout, lockEnv } from "../slot/acquire.ts";
 import { unlock } from "../slot/lock.ts";
@@ -47,7 +47,7 @@ async function spawnThrough(deps: Deps, child: Child): Promise<Result<number, Xc
   try {
     proc = Bun.spawn([...child.argv], {
       cwd: child.cwd,
-      env: withoutGitRepositoryEnv({ ...deps.env, ...child.env }),
+      env: slotCommandEnv({ ...deps.env, ...child.env }, child.cwd),
       stdin: "inherit",
       stdout: "pipe",
       stderr: "pipe",
@@ -212,7 +212,12 @@ export async function runInSlot(
     const ran = await spawnThrough(deps, {
       argv: rewritten ? ["xcodebuild", ...rewritten.args] : command,
       cwd,
-      env: { XCSLOT_DERIVED_DATA: slot.derivedData, XCSLOT_SLOT_DIR: slot.src, XCSLOT_WORKTREE: repo.value.worktree },
+      env: {
+        XCSLOT_DERIVED_DATA: slot.derivedData,
+        XCSLOT_SLOT_DIR: slot.src,
+        // Left out for xcodebuild: a value that differs per worktree would make every hand-off re-plan the build.
+        ...(wrapped === "run" && { XCSLOT_WORKTREE: repo.value.worktree }),
+      },
       map,
       logPath,
       stdoutTo: "stdout",

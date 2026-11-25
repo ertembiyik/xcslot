@@ -17,7 +17,7 @@ Measured on one project in [benchmarks.md](benchmarks.md), where a cold build ta
 | Clone DerivedData into the new worktree           | 107 s       | The build records name the old path, so nothing is reused.                                                               |
 | Clone DerivedData and rewrite the paths inside it | not tried   | Can work, but means editing Xcode's undocumented build database and task signatures, which any Xcode release may change. |
 | Xcode's compilation cache with prefix mapping     | 43 s        | Every lookup hits, and every task still runs: 1,510 Swift compile tasks, each fetching its result.                       |
-| A slot at a fixed path                            | 4.8 s       | Nothing moved and no timestamp changed, so Xcode finds no task to run.                                                   |
+| A slot at a fixed path                            | 3.9 s       | Nothing moved and no timestamp changed, so Xcode finds no task to run.                                                   |
 
 xcslot never moves a build, so it reads and writes nothing of Xcode's own. The compilation cache combines with
 it: with the cache already filled, a new slot's first build took 43 s instead of 85 s. xcslot does not turn

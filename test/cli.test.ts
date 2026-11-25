@@ -94,6 +94,39 @@ test("a second worktree reuses the slot, and a command inside a slot takes no se
   expect(nested.stderr).toBe("");
 });
 
+test("xcodebuild sees the same environment from every worktree and agent session, so Xcode keeps its build plan", async () => {
+  const repo = makeRepo({ "A.swift": "a" });
+  const second = addWorktree(repo, "two");
+  const home = scratch();
+  const bin = join(scratch(), "bin");
+  // A file, not stdout: xcslot maps slot paths in the output back to the worktree.
+  write(bin, { xcodebuild: ["#!/bin/sh", 'env | sort > "$HOME/env.txt"'].join("\n") });
+  chmodSync(join(bin, "xcodebuild"), 0o755);
+  const session = (id: string, from: string) => ({
+    PATH: `${bin}:${process.env.PATH}`,
+    PWD: from,
+    OLDPWD: `/elsewhere/${id}`,
+    SHLVL: id,
+    TERM_SESSION_ID: id,
+    CLAUDE_CODE_SESSION_ID: id,
+    CODEX_THREAD_ID: id,
+    KEEP_ME: "1",
+  });
+
+  const seen = async (from: string, id: string) => {
+    expect((await cli(["xcodebuild", "build"], { cwd: from, home, env: session(id, from) })).code).toBe(0);
+    return readFileSync(join(home, "env.txt"), "utf8");
+  };
+  const first = await seen(repo, "1");
+  expect(await seen(second, "2")).toBe(first);
+  expect(first).toContain("KEEP_ME=1\n");
+  expect(first).toMatch(/^PWD=.*\/1\/src$/m);
+  expect(first).not.toMatch(/^(OLDPWD|TERM_SESSION_ID|CLAUDE_|CODEX_|XCSLOT_WORKTREE)/m);
+
+  const run = await cli(["run", "--", "sh", "-c", "echo $XCSLOT_WORKTREE"], { cwd: second, home });
+  expect(run.stdout).toBe(`${second}\n`);
+});
+
 test("git variables exported by a hook point neither xcslot nor the wrapped command at another repository", async () => {
   const repo = makeRepo({ "A.swift": "a" });
   const bystander = makeRepo({ "B.swift": "b" }, "bystander");

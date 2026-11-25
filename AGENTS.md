@@ -70,6 +70,9 @@ Use bun for everything. `bun lint` joins `verify` when Bun 1.4.6 is stable; it i
   renames it instead of deleting it. A path whose parent became a file throws `ENOTDIR` from `lstat`, not `ENOENT`.
 - **A slot's parents can be symlinks.** A worktree that turned a symlink into a folder would have sync write
   through the slot's old link; sync replaces such a parent before copying and never removes through one.
+- **Xcode hashes the whole environment into its build plan.** A variable that differs between callers (`PWD`, an
+  agent's session id, `XCSLOT_WORKTREE`) makes the next build re-plan: tool probes and every Info.plist again, about
+  4 s on IceCubesApp. `slotCommandEnv` gives every caller of a slot the same environment.
 - **`xcodebuild -list` without `-derivedDataPath` writes package checkouts into Xcode's default DerivedData.**
   Metadata queries go through the slot too.
 

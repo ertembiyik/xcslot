@@ -58,10 +58,16 @@ A slot costs about what one DerivedData of the project costs, plus a checkout.
 
 ## Environment a wrapped command sees
 
-| Variable              | Value                                 |
-| --------------------- | ------------------------------------- |
-| `XCSLOT_DERIVED_DATA` | The slot's DerivedData.               |
-| `XCSLOT_SLOT_DIR`     | The slot's checkout.                  |
-| `XCSLOT_WORKTREE`     | The worktree the command was run for. |
+| Variable              | Value                                                    |
+| --------------------- | -------------------------------------------------------- |
+| `XCSLOT_DERIVED_DATA` | The slot's DerivedData.                                  |
+| `XCSLOT_SLOT_DIR`     | The slot's checkout.                                     |
+| `XCSLOT_WORKTREE`     | The worktree the command was run for; `xcslot run` only. |
+| `PWD`                 | The directory in the slot the command runs in.           |
+
+Xcode hashes the whole environment into its build plan, so a variable that differs between two callers makes the
+next build plan again, about 4 s on a large app. xcslot therefore leaves out variables that change per shell or agent
+session: `OLDPWD`, `SHLVL`, `_`, terminal and tmux session ids, and everything starting with `CLAUDE_`, `CLAUDECODE`,
+`CODEX_` or `CURSOR_`. Anything else you export reaches the build as it is.
 
 A script started by `xcslot run` that calls `xcslot xcodebuild` again uses the slot it is already in.

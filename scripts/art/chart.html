@@ -115,7 +115,7 @@
     <svg id="chart" width="1600" height="900" viewBox="0 0 1600 900"></svg>
     <div class="panel">
       <div class="stat">
-        <span class="up">Up to</span><span class="num">17x</span
+        <span class="up">Up to</span><span class="num">22x</span
         ><span class="cap">faster first build<br />of a fresh worktree</span>
       </div>
       <div class="stat">
@@ -125,9 +125,9 @@
     </div>
     <script>
       // From the measured figures in docs/benchmarks.md: every plain build of a fresh worktree is cold (85 s);
-      // through xcslot each of the three slots builds cold once, then a fresh worktree takes 4.8 s.
+      // through xcslot each of the three slots builds cold once, then a fresh worktree takes 3.9 s.
       const COLD = 85,
-        WARM = 4.8,
+        WARM = 3.9,
         SLOTS = 3,
         N = 12;
       const plainAt = (n) => COLD * n;

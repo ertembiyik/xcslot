@@ -1,5 +1,5 @@
 <p align="center">
-  <img src=".github/assets/header.png" alt="Two terminals on a Mac building the same new worktree: plain xcodebuild compiles 1,510 Swift files in 85 s, xcslot xcodebuild compiles none in 4.8 s" width="100%" />
+  <img src=".github/assets/header.png" alt="Two terminals on a Mac building the same new worktree: plain xcodebuild compiles 1,510 Swift files in 85 s, xcslot xcodebuild compiles none in 3.9 s" width="100%" />
 </p>
 
 <h1 align="center">xcslot</h1>
@@ -36,7 +36,7 @@ code come back unchanged, with paths pointing at your worktree.
 Works with any coding agent that runs shell commands: Claude Code, Codex, Cursor and the rest. Builds Xcode
 projects and workspaces, Tuist (generated inside the slot), Swift packages and any generator you declare in
 `.xcslot.json`. On [IceCubesApp](https://github.com/Dimillian/IceCubesApp), a fresh worktree's
-first build drops from 85 s to 4.8 s; [benchmarks](docs/benchmarks.md) has the method and more numbers.
+first build drops from 85 s to 3.9 s; [benchmarks](docs/benchmarks.md) has the method and more numbers.
 
 ## Install
 
@@ -74,7 +74,7 @@ recompiling, and prints two lines of its own on stderr:
 $ xcslot xcodebuild -scheme IceCubesApp build
 xcslot: slot 1: synced 0 changed files in 0.3s
 ** BUILD SUCCEEDED **
-xcslot: slot 1: xcodebuild exited 0 after 4.8s; products: ~/Library/Developer/xcslot/IceCubesApp-accf84b1/1/DerivedData/Build/Products (valid until the next build in slot 1); log: ~/Library/Developer/xcslot/IceCubesApp-accf84b1/logs/2026-11-24T04-56-12.256Z-slot1.log
+xcslot: slot 1: xcodebuild exited 0 after 3.7s; products: ~/Library/Developer/xcslot/IceCubesApp-accf84b1/1/DerivedData/Build/Products (valid until the next build in slot 1); log: ~/Library/Developer/xcslot/IceCubesApp-accf84b1/logs/2026-11-24T04-56-12.256Z-slot1.log
 ```
 
 | Command                                                 | What it does                                           |
