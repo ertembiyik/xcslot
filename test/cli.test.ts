@@ -3,7 +3,7 @@ import { chmodSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import skill from "../skills/xcslot/SKILL.md" with { type: "text" };
 import { splitWrapped } from "../src/run.ts";
-import { addWorktree, cli, lastJson, makeRepo, scratch, write } from "./helpers.ts";
+import { addWorktree, cli, headOf, lastJson, makeRepo, scratch, sh, write } from "./helpers.ts";
 
 interface Envelope {
   ok: boolean;
@@ -92,6 +92,28 @@ test("a second worktree reuses the slot, and a command inside a slot takes no se
   });
   expect(nested.stdout).toBe("/outer/DerivedData\n");
   expect(nested.stderr).toBe("");
+});
+
+test("git variables exported by a hook point neither xcslot nor the wrapped command at another repository", async () => {
+  const repo = makeRepo({ "A.swift": "a" });
+  const bystander = makeRepo({ "B.swift": "b" }, "bystander");
+  const home = scratch();
+  const worktree = addWorktree(repo, "task-1");
+  const hookEnv = { GIT_DIR: join(bystander, ".git"), GIT_INDEX_FILE: join(bystander, ".git/index") };
+  const before = headOf(bystander);
+
+  Object.assign(process.env, hookEnv);
+  let built: Awaited<ReturnType<typeof cli>>;
+  try {
+    built = await cli(["run", "--", "git", "rev-parse", "HEAD"], { cwd: worktree, home, env: hookEnv });
+  } finally {
+    for (const key of Object.keys(hookEnv)) delete process.env[key];
+  }
+
+  expect(built.code).toBe(0);
+  expect(built.stdout).toBe(`${headOf(worktree)}\n`);
+  expect(headOf(bystander)).toBe(before);
+  expect(sh(bystander, "git", "status", "--porcelain")).toBe("");
 });
 
 test("when every slot is busy the command says who holds them and fails with slots_busy", async () => {

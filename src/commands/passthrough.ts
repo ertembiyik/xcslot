@@ -6,6 +6,7 @@ import type { Deps } from "../context.ts";
 import { loadProjectConfig, loadUserConfig } from "../lib/config.ts";
 import { failure, type XcslotError } from "../lib/errors.ts";
 import { configPath, headOf, logsDir, resolveRepo, slotsRoot } from "../lib/layout.ts";
+import { withoutGitRepositoryEnv } from "../lib/proc.ts";
 import { err, ok, type Result } from "../lib/result.ts";
 import { acquirePermit, acquireSlot, ensureCheckout, lockEnv } from "../slot/acquire.ts";
 import { unlock } from "../slot/lock.ts";
@@ -46,7 +47,7 @@ async function spawnThrough(deps: Deps, child: Child): Promise<Result<number, Xc
   try {
     proc = Bun.spawn([...child.argv], {
       cwd: child.cwd,
-      env: { ...deps.env, ...child.env },
+      env: withoutGitRepositoryEnv({ ...deps.env, ...child.env }),
       stdin: "inherit",
       stdout: "pipe",
       stderr: "pipe",
