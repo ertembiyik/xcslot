@@ -32,6 +32,7 @@ slot, three slots, each building cold once.
   reused, because the build data names the old path.
 - The compilation cache was populated by one build and read by a worktree at another path, with prefix
   mapping on. Every lookup hit, and the build still ran every task.
+- The two combine: with that cache already filled, a new slot's first build took 42.6 s instead of 85 s.
 
 A one-file edit costs the same everywhere, because the edited module has dependents that recompile.
 

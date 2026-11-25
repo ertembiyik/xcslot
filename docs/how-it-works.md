@@ -6,12 +6,22 @@ Xcode decides what to rebuild from two things: where a file is and when it last 
 changes both. It sits at a new path, and `git worktree add` stamps every file with the current time. Xcode
 finds nothing it recognises and compiles everything.
 
-Two shortcuts look like they should help and do not, measured in [benchmarks.md](benchmarks.md):
-
-- **Copying DerivedData into the new worktree.** The build data names the old path, so nothing is reused.
-- **Xcode's compilation cache.** It halves the time, but every task still runs and many projects keep it off.
-
 What does work is not moving. The same path with unchanged timestamps is an incremental build.
+
+## Other ways to warm a fresh worktree
+
+Measured on one project in [benchmarks.md](benchmarks.md), where a cold build takes 85 s:
+
+| Approach                                          | First build | Why                                                                                                                      |
+| ------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Clone DerivedData into the new worktree           | 107 s       | The build records name the old path, so nothing is reused.                                                               |
+| Clone DerivedData and rewrite the paths inside it | not tried   | Can work, but means editing Xcode's undocumented build database and task signatures, which any Xcode release may change. |
+| Xcode's compilation cache with prefix mapping     | 43 s        | Every lookup hits, and every task still runs: 1,510 Swift compile tasks, each fetching its result.                       |
+| A slot at a fixed path                            | 4.8 s       | Nothing moved and no timestamp changed, so Xcode finds no task to run.                                                   |
+
+xcslot never moves a build, so it reads and writes nothing of Xcode's own. The compilation cache combines with
+it: with the cache already filled, a new slot's first build took 43 s instead of 85 s. xcslot does not turn
+the cache on; set `COMPILATION_CACHE_ENABLE_CACHING=YES` in your project if you want it.
 
 ## The slot
 
@@ -40,6 +50,28 @@ A slot is a folder that never moves:
 
 Your worktree is never built in and never locked. You keep editing while the build runs; the next build picks
 the edits up.
+
+## Which worktrees share slots
+
+Slots belong to a repository, found through git's common directory, so every worktree of it shares the same
+slots: ones made with `git worktree add`, and the ones Claude Code, Codex or Cursor make for their agents. A
+worktree nested inside the main checkout is not mirrored when the main checkout builds.
+
+A slot is held only while a command runs, and nothing in it refers to a worktree afterwards. Deleting a
+worktree needs no cleanup; products handed out with `--products-to` stay where they were put.
+
+## Disk
+
+| What                          | How it is stored                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| A slot's checkout (`src`)     | APFS clones of your worktree's files: no extra disk until either copy changes. |
+| A slot's DerivedData          | Its own, as large as any DerivedData of the project. Slots do not share it.    |
+| Products from `--products-to` | APFS clones of the slot's products.                                            |
+
+So the cost is about one DerivedData per slot, three per repository by default, however many worktrees there
+are. Plain `xcodebuild` names its default DerivedData folder after the project's path, so every worktree built
+that way leaves one more under `~/Library/Developer/Xcode/DerivedData` until you delete it.
+[Configuration](configuration.md#disk) has the commands that show and remove slots.
 
 ## What moves between the slot and your worktree
 

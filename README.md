@@ -92,6 +92,9 @@ failures are one JSON object with a code, a hint and a safe next command. The sk
 Build and test through xcslot: `xcslot xcodebuild <the usual arguments>`. `xcslot commands --json` lists the rest.
 ```
 
+Any git worktree works, including the ones Claude Code, Codex and Cursor create: every worktree of a
+repository shares its slots, and deleting one needs no cleanup.
+
 Give each agent its own simulator as well; [Simlock](https://github.com/callstackincubator/simlock) leases
 them, and `-destination id=<udid>` passes straight through.
 
@@ -105,6 +108,8 @@ them, and `-destination id=<udid>` passes straight through.
   sources after the slot moves on.
 - **Slots are shared.** A few per repository, with a machine-wide cap on builds at once. A busy slot is
   waited for, and the wait names the holder.
+- **Disk stays bounded.** About one DerivedData per slot, however many worktrees you make. The checkout in a
+  slot is APFS clones of your files, so it takes almost no space; slots do not share DerivedData.
 
 More in [How it works](docs/how-it-works.md), and per project type in [Configuration](docs/configuration.md).
 
