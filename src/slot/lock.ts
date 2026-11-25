@@ -5,8 +5,10 @@ import type { ProcessTable } from "../lib/proc.ts";
 
 const ownerSchema = z.object({
   pid: z.int(),
-  /** Start time of the owning process: a reused pid never keeps a dead lock alive. */
+  /** Start time of the owning process in its own time zone, which xcslot 0.1.4 and earlier compare. */
   started: z.string(),
+  /** The same in UTC: a reused pid never keeps a dead lock alive, whatever the reader's time zone. */
+  startedUtc: z.string().optional(),
   /** What the holder is doing, shown to whoever waits. */
   label: z.string(),
   since: z.number(),
@@ -33,7 +35,12 @@ function readOwner(dir: string): Owner | undefined {
 /** The live holder of a lock, if any. */
 export function holderOf(dir: string, env: LockEnv): Owner | undefined {
   const owner = readOwner(dir);
-  return owner && env.processes.startOf(owner.pid) === owner.started ? owner : undefined;
+  if (!owner) return undefined;
+  const alive =
+    owner.startedUtc !== undefined
+      ? env.processes.startOf(owner.pid) === owner.startedUtc
+      : [env.processes.startOf(owner.pid), env.processes.localStartOf?.(owner.pid)].includes(owner.started);
+  return alive ? owner : undefined;
 }
 
 function isStale(dir: string, env: LockEnv): boolean {
@@ -76,8 +83,9 @@ export function tryLock(dir: string, label: string, env: LockEnv): boolean {
       if (attempt === 1 || !isStale(dir, env) || !breakStale(dir, env)) return false;
       continue;
     }
-    const started = env.processes.startOf(env.pid) ?? "";
-    const owner: Owner = { pid: env.pid, started, label, since: env.now() };
+    const startedUtc = env.processes.startOf(env.pid) ?? "";
+    const started = env.processes.localStartOf?.(env.pid) ?? startedUtc;
+    const owner: Owner = { pid: env.pid, started, startedUtc, label, since: env.now() };
     writeFileSync(join(dir, "owner.tmp"), JSON.stringify(owner));
     renameSync(join(dir, "owner.tmp"), join(dir, "owner.json"));
     return true;

@@ -6,7 +6,7 @@ import type { Deps } from "../context.ts";
 import { loadProjectConfig, loadUserConfig } from "../lib/config.ts";
 import { failure, type XcslotError } from "../lib/errors.ts";
 import { configPath, headOf, logsDir, resolveRepo, slotsRoot } from "../lib/layout.ts";
-import { withoutGitRepositoryEnv } from "../lib/proc.ts";
+import { gitList, withoutGitRepositoryEnv } from "../lib/proc.ts";
 import { err, ok, type Result } from "../lib/result.ts";
 import { acquirePermit, acquireSlot, ensureCheckout, lockEnv } from "../slot/acquire.ts";
 import { unlock } from "../slot/lock.ts";
@@ -243,6 +243,12 @@ export async function runInSlot(
       products = `${asked}${symbols > 0 ? ` (${symbols} dSYMs)` : ""}`;
     }
     for (const { from: built, to } of ran.value === 0 ? (rewritten?.handOut ?? []) : []) {
+      // Products go back only into a folder of outputs; one that holds tracked files is the caller's source.
+      const tracked = gitList(repo.value.worktree, "ls-files", "--", relative(repo.value.worktree, to));
+      if (tracked.isErr() || tracked.value.length > 0) {
+        deps.stderr.write(`xcslot: left the products in ${built}: ${to} holds tracked files\n`);
+        continue;
+      }
       const cloned = cloneInto(built, to);
       if (cloned.isErr()) return err(cloned.error);
       if (options.dsym) await embedDebugSymbols(to, slot.src, repo.value.worktree);

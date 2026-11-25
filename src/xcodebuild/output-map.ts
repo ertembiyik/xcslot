@@ -13,6 +13,8 @@ export interface LineMapper {
 
 // Where a printed path can end before the line does; candidates are tried from the longest down.
 const PATH_END = /[\s)\]>,;]/;
+// A path rarely holds more spaces than this; a compiler's command line holds thousands after one.
+const MAX_ENDS = 8;
 
 /**
  * Rewrites the slot's source paths in a command's output to the worktree's, so a diagnostic names the file the
@@ -44,11 +46,12 @@ export function createPathMapper(
     if (!roots.some((root) => line.includes(root))) return line;
     return line.replace(pattern, (whole, rest: string) => {
       if (rest === "") return worktree;
-      for (let end = rest.length; end > 0; end--) {
-        if (end < rest.length && !PATH_END.test(rest[end] as string)) continue;
-        if (present(worktree + rest.slice(0, end))) return worktree + rest;
+      const ends: number[] = [];
+      for (let at = 1; at < rest.length && ends.length < MAX_ENDS; at++) {
+        if (PATH_END.test(rest[at] as string)) ends.push(at);
       }
-      return whole;
+      if (ends.length < MAX_ENDS) ends.push(rest.length);
+      return ends.reverse().some((end) => present(worktree + rest.slice(0, end))) ? worktree + rest : whole;
     });
   };
   return Object.assign(map, { needles: roots });

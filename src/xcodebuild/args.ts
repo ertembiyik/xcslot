@@ -92,10 +92,11 @@ export function rewriteArgs(args: readonly string[], places: Places): Rewritten 
     } else if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(arg)) {
       const at = arg.indexOf("=");
       const [name, setting] = [arg.slice(0, at), arg.slice(at + 1)];
-      if (PRODUCT_SETTINGS.has(name)) {
+      // A value built from other settings, `$(SRCROOT)/build`, is xcodebuild's to expand; it passes through.
+      if (PRODUCT_SETTINGS.has(name) && !/\$[({]/.test(setting)) {
         const asked = resolve(places.cwd, setting);
         const built = intoSlot(asked, places);
-        if (built !== asked) handOut.push({ from: built, to: asked });
+        if (built !== asked && asked !== places.worktree) handOut.push({ from: built, to: asked });
         out.push(`${name}=${built}`);
       } else {
         out.push(`${name}=${intoSlot(setting, places)}`);

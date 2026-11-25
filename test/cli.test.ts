@@ -201,6 +201,13 @@ test.skipIf(process.platform !== "darwin")(
     expect(viaSetting.code).toBe(0);
     expect(readFileSync(join(worktree, "out/Debug/App"), "utf8")).toBe("built\n");
 
+    const gitFile = readFileSync(join(worktree, ".git"), "utf8");
+    write(worktree, { "A.swift": "edited during the build" });
+    const intoSources = await cli(["xcodebuild", `SYMROOT=${worktree}`, "build"], { cwd: worktree, home, env });
+    expect(intoSources.code).toBe(0);
+    expect(readFileSync(join(worktree, ".git"), "utf8")).toBe(gitFile);
+    expect(readFileSync(join(worktree, "A.swift"), "utf8")).toBe("edited during the build");
+
     write(worktree, { "dd/Build/Products/Old/Stale": "from a plain xcodebuild" });
     const intoUsed = await cli(["xcodebuild", "-derivedDataPath", "dd", "build"], { cwd: worktree, home, env });
     expect(intoUsed.code).toBe(0);

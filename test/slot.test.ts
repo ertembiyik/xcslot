@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { slotPaths } from "../src/lib/layout.ts";
+import { systemProcesses } from "../src/lib/proc.ts";
 import { holderOf, tryLock, tryPermit, unlock } from "../src/slot/lock.ts";
 import { type PrepareStep, prepare } from "../src/slot/prepare.ts";
 import { removeSlot, rotateLogs, sweep } from "../src/slot/remove.ts";
@@ -48,6 +49,16 @@ test("a process's start time reads the same in every time zone and locale", () =
   const read = (TZ: string, LC_ALL: string) =>
     Bun.spawnSync([process.execPath, "-e", script], { env: { ...process.env, TZ, LC_ALL } }).stdout.toString();
   expect(read("Pacific/Auckland", "de_DE.UTF-8")).toBe(read("UTC", "C"));
+});
+
+test("a lock written by xcslot 0.1.4, with its owner's local start time, still counts as held", () => {
+  const dir = join(scratch(), "lock");
+  mkdirSync(dir);
+  const started = systemProcesses.localStartOf?.(process.pid) as string;
+  writeFileSync(join(dir, "owner.json"), JSON.stringify({ pid: process.pid, started, label: "old", since: 1 }));
+  const reader = { pid: 1, processes: systemProcesses, now: () => Date.now() };
+  expect(holderOf(dir, reader)?.label).toBe("old");
+  expect(tryLock(dir, "new", reader)).toBe(false);
 });
 
 test("two callers taking over the same dead lock end with one holder", () => {

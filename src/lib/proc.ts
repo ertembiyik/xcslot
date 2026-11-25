@@ -65,24 +65,25 @@ export function gitList(cwd: string, ...args: string[]): Result<string[], Xcslot
 }
 
 export interface ProcessTable {
-  /** A process's start time as `ps` prints it, or undefined when it is gone. */
+  /** A process's start time as `ps` prints it in UTC and the C locale, or undefined when it is gone. */
   startOf(pid: number): string | undefined;
+  /** The same in the caller's own time zone and locale, as xcslot 0.1.4 and earlier recorded it. */
+  localStartOf?(pid: number): string | undefined;
+}
+
+function psStart(pid: number, env: Record<string, string | undefined>): string | undefined {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EPERM") return undefined;
+  }
+  const done = Bun.spawnSync(["ps", "-o", "lstart=", "-p", String(pid)], { env, stdout: "pipe", stderr: "ignore" });
+  const started = done.stdout.toString().trim().replace(/\s+/g, " ");
+  return done.exitCode === 0 && started ? started : undefined;
 }
 
 export const systemProcesses: ProcessTable = {
-  startOf(pid) {
-    try {
-      process.kill(pid, 0);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EPERM") return undefined;
-    }
-    // ps prints the start time in the caller's time zone and locale; every reader must see the same string.
-    const done = Bun.spawnSync(["ps", "-o", "lstart=", "-p", String(pid)], {
-      env: { PATH: process.env.PATH, TZ: "UTC", LC_ALL: "C" },
-      stdout: "pipe",
-      stderr: "ignore",
-    });
-    const started = done.stdout.toString().trim().replace(/\s+/g, " ");
-    return done.exitCode === 0 && started ? started : undefined;
-  },
+  // ps prints the start time in the caller's time zone and locale; every reader must see the same string.
+  startOf: (pid) => psStart(pid, { PATH: process.env.PATH, TZ: "UTC", LC_ALL: "C" }),
+  localStartOf: (pid) => psStart(pid, process.env),
 };

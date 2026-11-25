@@ -102,6 +102,10 @@ test("xcodebuild arguments: tree inputs resolve in the slot, everything else sta
     "/s/1/DerivedData",
   ]);
   expect(rewritten.handOut).toEqual([{ from: "/s/1/src/build", to: "/w/app/build" }]);
+
+  const settings = rewriteArgs(["SYMROOT=$(SRCROOT)/build", "CONFIGURATION_BUILD_DIR=/w/app", "build"], places);
+  expect(settings.args.slice(0, 2)).toEqual(["SYMROOT=$(SRCROOT)/build", "CONFIGURATION_BUILD_DIR=/s/1/src"]);
+  expect(settings.handOut).toEqual([]);
   expect(needsNoProject(["-version"])).toBe(true);
   expect(needsNoProject(["-scheme", "App", "build"])).toBe(false);
 });
@@ -130,6 +134,17 @@ test("output paths point at the worktree, except for files that exist only in th
   expect(spaced("open file:///s/1/src/A.swift")).toBe("open file:///w/app/A.swift");
   expect(spaced("(/s/1/src/A.swift) and /s/1/src/B.swift here")).toBe("(/w/app/A.swift) and /w/app/B.swift here");
   expect(spaced("/s/1/src/Gen Only.swift:1: e")).toBe("/s/1/src/Gen Only.swift:1: e");
+
+  let looks = 0;
+  const counted = createPathMapper("/s/1/src", "/w/app", (path) => {
+    looks++;
+    return path === "/w/app/X.swift";
+  });
+  const flags = Array.from({ length: 3000 }, (_, i) => `-Xflag${i} /elsewhere/p${i}`).join(" ");
+  expect(counted(`swift-frontend -primary-file /s/1/src/X.swift ${flags}`)).toStartWith(
+    "swift-frontend -primary-file /w/app/X.swift -Xflag0",
+  );
+  expect(looks).toBeLessThan(10);
 
   const binary = Uint8Array.from([0xff, 0xfe, 0x00, 0x0a, 0x80, 0xc3]);
   const passed: Uint8Array[] = [];
