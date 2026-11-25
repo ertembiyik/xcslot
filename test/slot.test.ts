@@ -3,6 +3,7 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   symlinkSync,
@@ -11,11 +12,13 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { slotPaths } from "../src/lib/layout.ts";
+import { systemProcesses } from "../src/lib/proc.ts";
 import { holderOf, tryLock, tryPermit, unlock } from "../src/slot/lock.ts";
 import { type PrepareStep, prepare } from "../src/slot/prepare.ts";
 import { removeSlot, rotateLogs, sweep } from "../src/slot/remove.ts";
 import { emptyState, readState, writeState } from "../src/slot/state.ts";
 import { syncInto, writeBack } from "../src/slot/sync.ts";
+import { debuggableBinaries } from "../src/xcodebuild/handout.ts";
 import { addWorktree, fakeProcesses, headOf, lockEnvFor, makeRepo, scratch, sh, write } from "./helpers.ts";
 
 test("a lock has one holder, survives nothing but its owner, and is reclaimed when the owner is gone", () => {
@@ -39,6 +42,76 @@ test("a reused pid with another start time does not keep a dead owner's lock", (
   const dir = join(scratch(), "lock");
   expect(tryLock(dir, "old", lockEnvFor(10, fakeProcesses({ 10: "Mon 1" })))).toBe(true);
   expect(tryLock(dir, "new", lockEnvFor(20, fakeProcesses({ 10: "Tue 9", 20: "Tue 9" })))).toBe(true);
+});
+
+test("a process's start time reads the same in every time zone and locale", () => {
+  const proc = join(import.meta.dir, "../src/lib/proc.ts");
+  const script = `const { systemProcesses } = await import(${JSON.stringify(proc)}); console.log(systemProcesses.startOf(${process.pid}))`;
+  const read = (TZ: string, LC_ALL: string) =>
+    Bun.spawnSync([process.execPath, "-e", script], { env: { ...process.env, TZ, LC_ALL } }).stdout.toString();
+  expect(read("Pacific/Auckland", "de_DE.UTF-8")).toBe(read("UTC", "C"));
+});
+
+test("a lock written by xcslot 0.1.4, with its owner's local start time, still counts as held", () => {
+  const dir = join(scratch(), "lock");
+  mkdirSync(dir);
+  const started = systemProcesses.localStartOf?.(process.pid) as string;
+  writeFileSync(join(dir, "owner.json"), JSON.stringify({ pid: process.pid, started, label: "old", since: 1 }));
+  const reader = { pid: 1, processes: systemProcesses, now: () => Date.now() };
+  expect(holderOf(dir, reader)?.label).toBe("old");
+  expect(tryLock(dir, "new", reader)).toBe(false);
+});
+
+test("two callers taking over the same dead lock end with one holder", () => {
+  const dir = join(scratch(), "lock");
+  expect(tryLock(dir, "dead", lockEnvFor(10, fakeProcesses({ 10: "Mon 1" })))).toBe(true);
+  const alive: Record<number, string> = { 20: "Mon 2", 30: "Mon 3" };
+  let aGot = false;
+  let interleaved = false;
+  // B's first look at the dead owner lets A take the lock over in between.
+  const b = lockEnvFor(20, {
+    startOf: (pid) => {
+      if (pid === 10 && !interleaved) {
+        interleaved = true;
+        aGot = tryLock(dir, "A", lockEnvFor(30, fakeProcesses(alive)));
+      }
+      return alive[pid];
+    },
+  });
+  const bGot = tryLock(dir, "B", b);
+  expect({ aGot, bGot }).toEqual({ aGot: true, bGot: false });
+  expect(holderOf(dir, b)?.label).toBe("A");
+});
+
+test("a breaker owns its guard while it checks the dead lock, so a pause cannot let anyone take the guard", () => {
+  const dir = join(scratch(), "lock");
+  expect(tryLock(dir, "dead", lockEnvFor(10, fakeProcesses({ 10: "Mon 1" })))).toBe(true);
+  let guardOwner: number | undefined;
+  const b = lockEnvFor(20, {
+    startOf: (pid) => {
+      const guard = join(`${dir}.breaking`, "owner.json");
+      if (pid === 10 && existsSync(guard)) guardOwner = JSON.parse(readFileSync(guard, "utf8")).pid;
+      return pid === 20 ? "Mon 2" : undefined;
+    },
+  });
+  expect(tryLock(dir, "B", b)).toBe(true);
+  expect(guardOwner).toBe(20);
+  expect(existsSync(`${dir}.breaking`)).toBe(false);
+});
+
+test("the binaries that get dSYMs include plain ones at the folder's root and in nested bundles", () => {
+  const products = scratch();
+  const machO = Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]);
+  for (const path of ["tool", "Debug/lib.dylib", "App.app/App", "App.app/PlugIns/Ext.appex/Ext"]) {
+    write(products, { [path]: "" });
+    writeFileSync(join(products, path), machO);
+  }
+  write(products, { readme: "text", "App.app/Info.plist": "plist" });
+  expect(
+    debuggableBinaries(products)
+      .map((path) => path.slice(products.length + 1))
+      .sort(),
+  ).toEqual(["App.app/App", "App.app/PlugIns/Ext.appex/Ext", "Debug/lib.dylib", "tool"]);
 });
 
 test("a lock folder without an owner is taken over only after the grace period", () => {
@@ -104,6 +177,37 @@ test("sync rewrites only files whose content differs, so every other file keeps 
   sh(fresh, "rm", "Local.xcconfig");
   expect(syncInto(fresh, headOf(fresh), slot.src, state, ["*.xcconfig"])._unsafeUnwrap().removed).toBe(1);
   expect(existsSync(join(slot.src, "Local.xcconfig"))).toBe(false);
+});
+
+test("sync follows a path changing kind, a case-only rename and a mode change, and never writes outside the slot", () => {
+  const outside = scratch();
+  writeFileSync(join(outside, "a.txt"), "keep");
+  const repo = makeRepo({ "A.swift": "a", "gen.sh": "echo", foo: "file", "dir/x": "x" });
+  const slot = slotFor(repo);
+  const fresh = addWorktree(repo, "fresh");
+  symlinkSync(outside, join(fresh, "lib"));
+  const state = emptyState();
+  syncInto(fresh, headOf(fresh), slot.src, state, [])._unsafeUnwrap();
+  expect(readlinkSync(join(slot.src, "lib"))).toBe(outside);
+  utimesSync(join(slot.src, "gen.sh"), OLD, OLD);
+
+  sh(fresh, "rm", "lib", "foo");
+  sh(fresh, "rm", "-r", "dir");
+  write(fresh, { "lib/a.txt": "new", "foo/bar": "bar", dir: "now a file" });
+  sh(fresh, "git", "mv", "A.swift", "a.swift");
+  sh(fresh, "chmod", "+x", "gen.sh");
+  syncInto(fresh, headOf(fresh), slot.src, state, [])._unsafeUnwrap();
+
+  expect(readFileSync(join(outside, "a.txt"), "utf8")).toBe("keep");
+  expect(readFileSync(join(slot.src, "lib/a.txt"), "utf8")).toBe("new");
+  expect(readFileSync(join(slot.src, "foo/bar"), "utf8")).toBe("bar");
+  expect(readFileSync(join(slot.src, "dir"), "utf8")).toBe("now a file");
+  expect(readdirSync(slot.src).filter((name) => name.toLowerCase() === "a.swift")).toEqual(["a.swift"]);
+  expect(readFileSync(join(slot.src, "a.swift"), "utf8")).toBe("a");
+  expect(lstatSync(join(slot.src, "gen.sh")).mode & 0o111).not.toBe(0);
+  expect(lstatSync(join(slot.src, "gen.sh")).mtime).toEqual(OLD);
+
+  expect(syncInto(fresh, headOf(fresh), slot.src, state, [])._unsafeUnwrap()).toMatchObject({ changed: 0, removed: 0 });
 });
 
 test("files a command wrote in the slot return to the worktree; a file both sides changed is left alone", () => {

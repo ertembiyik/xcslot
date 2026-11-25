@@ -1,4 +1,14 @@
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { failure, type XcslotError } from "../lib/errors.ts";
 import { exec } from "../lib/proc.ts";
@@ -20,31 +30,33 @@ function isMachO(path: string): boolean {
 }
 
 /**
- * The binaries that carry code: plain executables and libraries in a configuration folder, and inside each
+ * The binaries that carry code: plain executables and libraries outside bundles, at any depth, and inside each
  * bundle (flat, or laid out as on macOS) the executable plus, in Debug builds, the `*.debug.dylib` that holds
  * the code.
  */
 export function debuggableBinaries(products: string): string[] {
-  const found: string[] = [];
-  const machOIn = (dir: string) =>
-    readdirSync(dir, { withFileTypes: true })
-      .filter((file) => file.isFile() && !file.name.endsWith(".o") && isMachO(join(dir, file.name)))
-      .map((file) => join(dir, file.name));
-  const walk = (dir: string, depth: number) => {
-    if (depth === 1) found.push(...machOIn(dir));
+  const found = new Set<string>();
+  const machOIn = (dir: string) => {
+    for (const file of readdirSync(dir, { withFileTypes: true })) {
+      if (file.isFile() && !file.name.endsWith(".o") && isMachO(join(dir, file.name))) found.add(join(dir, file.name));
+    }
+  };
+  const walk = (dir: string, inBundle: boolean) => {
+    if (!inBundle) machOIn(dir);
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const path = join(dir, entry.name);
       if (!entry.isDirectory() || entry.name.endsWith(".dSYM")) continue;
-      if (BUNDLE.test(entry.name)) {
+      const bundle = BUNDLE.test(entry.name);
+      if (bundle) {
         for (const base of [path, join(path, "Contents", "MacOS"), join(path, "Versions", "A")]) {
-          if (existsSync(base)) found.push(...machOIn(base));
+          if (existsSync(base)) machOIn(base);
         }
       }
-      walk(path, depth + 1);
+      walk(path, inBundle || bundle);
     }
   };
-  walk(products, 0);
-  return found;
+  if (existsSync(products)) walk(products, false);
+  return [...found];
 }
 
 const remapPlist = (from: string, to: string) => `<?xml version="1.0" encoding="UTF-8"?>
@@ -100,12 +112,25 @@ export async function embedDebugSymbols(products: string, slotSrc: string, workt
 }
 
 /**
- * Clones the slot's built products to a directory the caller owns. An APFS clone is instant, takes no space
- * until either side changes, and outlives the next build in the slot.
+ * Clones the slot's built products into a `--products-to` folder, which xcslot owns and replaces whole. An APFS
+ * clone is instant, takes no space until either side changes, and outlives the next build in the slot.
  */
 export function cloneProducts(derivedData: string, destination: string): Result<string, XcslotError> {
   const products = join(derivedData, "Build", "Products");
   if (!existsSync(products)) return ok(destination);
+  const usable = checkProductsDestination(destination);
+  if (usable.isErr()) return err(usable.error);
+  rmSync(destination, { recursive: true, force: true });
+  mkdirSync(dirname(destination), { recursive: true });
+  return exec(["cp", "-c", "-R", products, destination]).andThen((done) => {
+    if (done.code !== 0) return err(failure("sync_failed", `Could not clone products: ${done.stderr.trim()}`));
+    writeFileSync(join(destination, PRODUCTS_MARKER), "");
+    return ok(destination);
+  });
+}
+
+/** A `--products-to` folder is replaced on every build, so it must be new, empty or one xcslot made. */
+export function checkProductsDestination(destination: string): Result<string, XcslotError> {
   if (
     existsSync(destination) &&
     readdirSync(destination).length > 0 &&
@@ -117,11 +142,41 @@ export function cloneProducts(derivedData: string, destination: string): Result<
       }),
     );
   }
-  rmSync(destination, { recursive: true, force: true });
-  mkdirSync(dirname(destination), { recursive: true });
-  return exec(["cp", "-c", "-R", products, destination]).andThen((done) => {
-    if (done.code !== 0) return err(failure("sync_failed", `Could not clone products: ${done.stderr.trim()}`));
-    writeFileSync(join(destination, PRODUCTS_MARKER), "");
-    return ok(destination);
-  });
+  return ok(destination);
+}
+
+/**
+ * Clones built products into a folder the caller shares with other output: folders merge, and each file or
+ * bundle is replaced whole, so a rebuilt app never keeps a resource it dropped. Anything else stays. Paths `keep`
+ * names are left alone. Returns how many entries were cloned.
+ */
+export function mergeProducts(
+  from: string,
+  to: string,
+  keep: (path: string) => boolean = () => false,
+): Result<number, XcslotError> {
+  if (!existsSync(from)) return ok(0);
+  let cloned = 0;
+  const merge = (source: string, target: string): Result<void, XcslotError> => {
+    mkdirSync(target, { recursive: true });
+    for (const entry of readdirSync(source, { withFileTypes: true })) {
+      const [inner, outer] = [join(source, entry.name), join(target, entry.name)];
+      if (keep(outer)) continue;
+      if (entry.isDirectory() && !BUNDLE.test(entry.name) && !entry.name.endsWith(".dSYM")) {
+        if (existsSync(outer) && !lstatSync(outer).isDirectory()) rmSync(outer);
+        const merged = merge(inner, outer);
+        if (merged.isErr()) return merged;
+        continue;
+      }
+      rmSync(outer, { recursive: true, force: true });
+      const done = exec(["cp", "-c", "-R", inner, outer]);
+      if (done.isErr()) return err(done.error);
+      if (done.value.code !== 0) {
+        return err(failure("sync_failed", `Could not clone ${inner} to ${outer}: ${done.value.stderr.trim()}`));
+      }
+      cloned++;
+    }
+    return ok(undefined);
+  };
+  return merge(from, to).map(() => cloned);
 }

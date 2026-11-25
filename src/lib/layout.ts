@@ -34,8 +34,10 @@ export function resolveRepo(from: string, root: string): Result<Repo, XcslotErro
     );
   }
   const worktree = top.value.trim();
-  return git(worktree, "rev-parse", "--path-format=absolute", "--git-common-dir").map((common) => {
-    const main = dirname(common.trim());
+  return git(worktree, "rev-parse", "--path-format=absolute", "--git-common-dir").map((out) => {
+    // A bare repository or a separate git dir has no main checkout; the git dir itself names the repository.
+    const common = out.trim();
+    const main = basename(common) === ".git" ? dirname(common) : common;
     return { worktree, main, dir: repoDir(root, main) };
   });
 }
@@ -70,5 +72,13 @@ export const logsDir = (repoDir: string) => join(repoDir, "logs");
 export const permitsDir = (root: string) => join(root, "permits");
 
 export function headOf(worktree: string): Result<string, XcslotError> {
-  return git(worktree, "rev-parse", "HEAD").map((out) => out.trim());
+  return git(worktree, "rev-parse", "--verify", "-q", "HEAD^{commit}")
+    .mapErr((error) =>
+      error.code === "tool_missing"
+        ? error
+        : failure("usage_error", `${worktree} has no commit yet`, {
+            hint: "Commit once; a slot is a checkout of a commit plus your changes",
+          }),
+    )
+    .map((out) => out.trim());
 }

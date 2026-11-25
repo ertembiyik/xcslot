@@ -2,8 +2,12 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 
-const fileStat = z.tuple([z.number(), z.number()]);
-export type FileStat = z.infer<typeof fileStat>;
+// Size, mtime and mode; a state written before the mode was kept compares its files by content once.
+const fileStat = z.union([
+  z.tuple([z.number(), z.number(), z.number()]),
+  z.tuple([z.number(), z.number()]).transform(([size, mtime]): [number, number, number] => [size, mtime, -1]),
+]);
+export type FileStat = z.output<typeof fileStat>;
 
 export const slotStateSchema = z.object({
   /** The worktree this slot was last synced from. */

@@ -45,8 +45,11 @@ xcslot xcodebuild --products-to build/out -scheme App -configuration Debug build
 - **Files the build wrote** into the source tree (recorded snapshot references, an updated `Package.resolved`,
   linter fixes) are copied back to the worktree and listed. A file that you also changed during the build is
   left alone and named.
-- **Products.** With `--products-to`, or when you pass your own `-derivedDataPath`, the products are cloned to
-  where you asked. Each app, framework and plain binary gets a dSYM beside it (never inside a bundle, so
+- **Products.** With `--products-to`, your own `-derivedDataPath`, or a build setting that puts products in
+  the worktree (`SYMROOT`, `DSTROOT`, `BUILD_DIR`, `BUILD_ROOT`, `CONFIGURATION_BUILD_DIR`), the products are
+  built in the slot and cloned to where you asked. A `--products-to` folder must be new, empty or one xcslot made;
+  it is checked before the build and again before it is replaced. Anywhere else, each product (a file or a whole
+  bundle) replaces its old copy and everything else in the folder stays. Each app, framework and plain binary gets a dSYM beside it (never inside a bundle, so
   signatures stay valid) with a record that maps source paths to your worktree, so a debugger shows the right
   lines after the slot is reused.
 

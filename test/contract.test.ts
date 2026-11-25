@@ -4,6 +4,7 @@ import { nextCommand, READ_ONLY_COMMANDS, shellQuote } from "../src/lib/next.ts"
 import { catalog } from "../src/commands/misc.ts";
 import { createProgram } from "../src/run.ts";
 import { rewriteArgs, needsNoProject } from "../src/xcodebuild/args.ts";
+import { caseClash } from "../src/slot/sync.ts";
 import { createPathMapper, pumpLines } from "../src/xcodebuild/output-map.ts";
 import { orderSlots } from "../src/slot/select.ts";
 import { emptyState } from "../src/slot/state.ts";
@@ -101,6 +102,11 @@ test("xcodebuild arguments: tree inputs resolve in the slot, everything else sta
     "-derivedDataPath",
     "/s/1/DerivedData",
   ]);
+  expect(rewritten.handOut).toEqual([{ from: "/s/1/src/build", to: "/w/app/build" }]);
+
+  const settings = rewriteArgs(["SYMROOT=$(SRCROOT)/build", "CONFIGURATION_BUILD_DIR=/w/app", "build"], places);
+  expect(settings.args.slice(0, 2)).toEqual(["SYMROOT=$(SRCROOT)/build", "CONFIGURATION_BUILD_DIR=/s/1/src"]);
+  expect(settings.handOut).toEqual([]);
   expect(needsNoProject(["-version"])).toBe(true);
   expect(needsNoProject(["-scheme", "App", "build"])).toBe(false);
 });
@@ -118,9 +124,39 @@ test("output paths point at the worktree, except for files that exist only in th
 
   const encoder = new TextEncoder();
   const chunks = ["one /s/1/s", "rc/A.swift:1\ntwo", " end"].map((text) => encoder.encode(text));
-  let written = "";
-  await pumpLines(new Blob(chunks.map((chunk) => chunk.slice())).stream(), map, (text) => void (written += text));
-  expect(written).toBe("one /w/app/A.swift:1\ntwo end");
+  const written: Uint8Array[] = [];
+  await pumpLines(new Blob(chunks.map((chunk) => chunk.slice())).stream(), map, (chunk) => void written.push(chunk));
+  expect(Buffer.concat(written).toString()).toBe("one /w/app/A.swift:1\ntwo end");
+
+  const inWorktree = new Set(["/w/app/My App/View.swift", "/w/app/A.swift", "/w/app/B.swift"]);
+  const spaced = createPathMapper("/s/1/src", "/w/app", (path) => inWorktree.has(path));
+  expect(spaced("/s/1/src/My App/View.swift:3:1: error: e")).toBe("/w/app/My App/View.swift:3:1: error: e");
+  expect(spaced("\x1b[1m/s/1/src/A.swift:1:1: \x1b[0m")).toBe("\x1b[1m/w/app/A.swift:1:1: \x1b[0m");
+  expect(spaced("open file:///s/1/src/A.swift")).toBe("open file:///w/app/A.swift");
+  expect(spaced("(/s/1/src/A.swift) and /s/1/src/B.swift here")).toBe("(/w/app/A.swift) and /w/app/B.swift here");
+  expect(spaced("/s/1/src/Gen Only.swift:1: e")).toBe("/s/1/src/Gen Only.swift:1: e");
+
+  let looks = 0;
+  const counted = createPathMapper("/s/1/src", "/w/app", (path) => {
+    looks++;
+    return path === "/w/app/X.swift";
+  });
+  const flags = Array.from({ length: 3000 }, (_, i) => `-Xflag${i} /elsewhere/p${i}`).join(" ");
+  expect(counted(`swift-frontend -primary-file /s/1/src/X.swift ${flags}`)).toStartWith(
+    "swift-frontend -primary-file /w/app/X.swift -Xflag0",
+  );
+  expect(looks).toBeLessThan(10);
+
+  const binary = Uint8Array.from([0xff, 0xfe, 0x00, 0x0a, 0x80, 0xc3]);
+  const passed: Uint8Array[] = [];
+  await pumpLines(new Blob([binary]).stream(), spaced, (chunk) => void passed.push(chunk));
+  expect(Buffer.concat(passed)).toEqual(Buffer.from(binary));
+});
+
+test("paths that a case-insensitive volume would merge are found", () => {
+  expect(caseClash(["Assets/icon.png", "assets"])).toEqual(["Assets", "assets"]);
+  expect(caseClash(["A.swift", "a.swift"])).toEqual(["A.swift", "a.swift"]);
+  expect(caseClash(["Sources/A.swift", "Sources/B.swift", "README.md"])).toBeUndefined();
 });
 
 test("slot choice: own slot, then the nearest by changed files, the longest unused on a tie, never-built last", () => {

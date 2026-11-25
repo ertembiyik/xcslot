@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
 import skill from "../skills/xcslot/SKILL.md" with { type: "text" };
 import { splitWrapped } from "../src/run.ts";
 import { addWorktree, cli, headOf, lastJson, makeRepo, scratch, sh, write } from "./helpers.ts";
@@ -8,7 +8,7 @@ import { addWorktree, cli, headOf, lastJson, makeRepo, scratch, sh, write } from
 interface Envelope {
   ok: boolean;
   data?: Record<string, unknown>;
-  error?: { code: string; next?: { command: string }[]; details?: Record<string, unknown> };
+  error?: { code: string; message: string; next?: { command: string }[]; details?: Record<string, unknown> };
 }
 const envelope = (text: string) => lastJson(text) as Envelope;
 
@@ -115,6 +115,160 @@ test("git variables exported by a hook point neither xcslot nor the wrapped comm
   expect(headOf(bystander)).toBe(before);
   expect(sh(bystander, "git", "status", "--porcelain")).toBe("");
 });
+
+const gitAs = (cwd: string, ...args: string[]) =>
+  sh(
+    cwd,
+    "git",
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.invalid",
+    "-c",
+    "commit.gpgsign=false",
+    ...args,
+  );
+
+test("a submodule's files are mirrored, and a slots folder deleted by hand is set up again", async () => {
+  const sub = makeRepo({ "S.swift": "from the submodule" }, "sub");
+  const repo = makeRepo({ "A.swift": "a" });
+  gitAs(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "Vendor/sub");
+  gitAs(repo, "commit", "-q", "-m", "submodule");
+  const worktree = addWorktree(repo, "task-1");
+  gitAs(worktree, "-c", "protocol.file.allow=always", "submodule", "update", "-q", "--init");
+  const home = scratch();
+
+  write(worktree, { "Vendor/sub/New.swift": " and a new file" });
+  const built = await cli(["run", "--", "cat", "Vendor/sub/S.swift", "Vendor/sub/New.swift"], { cwd: worktree, home });
+  expect(built.stdout).toBe("from the submodule and a new file");
+  expect(built.code).toBe(0);
+
+  rmSync(join(home, "slots"), { recursive: true });
+  const again = await cli(["run", "--", "cat", "A.swift"], { cwd: worktree, home });
+  expect(again.stdout).toBe("a");
+  expect(again.code).toBe(0);
+});
+
+test("a bare repository's worktree builds, --from may be a symlink, and a repository needs a first commit", async () => {
+  const repo = makeRepo({ "ios/App.swift": "app" });
+  const bare = join(scratch(), "proj.git");
+  sh(repo, "git", "clone", "-q", "--bare", repo, bare);
+  const worktree = join(dirname(bare), "wt");
+  sh(bare, "git", "worktree", "add", "-q", worktree, "main");
+  const home = scratch();
+
+  const built = await cli(["run", "--", "cat", "ios/App.swift"], { cwd: worktree, home });
+  expect(built.stdout).toBe("app");
+  expect(built.code).toBe(0);
+
+  const link = join(scratch(), "link");
+  symlinkSync(worktree, link);
+  const viaLink = await cli(["run", "--from", join(link, "ios"), "--", "pwd"], { cwd: home, home });
+  expect(viaLink.stdout).toBe(`${join(worktree, "ios")}\n`);
+
+  const empty = join(scratch(), "empty");
+  mkdirSync(empty);
+  sh(empty, "git", "init", "-q");
+  const unborn = await cli(["run", "--", "true"], { cwd: empty, home });
+  expect(unborn.code).toBe(101);
+  expect(envelope(unborn.stderr).error?.message).toContain("has no commit yet");
+});
+
+test("a folder sync cannot read fails as sync_failed, not as an internal error", async () => {
+  const repo = makeRepo({ "Locked/A.swift": "a" });
+  const worktree = addWorktree(repo, "task-1");
+  chmodSync(join(worktree, "Locked"), 0o000);
+  try {
+    const built = await cli(["run", "--", "true"], { cwd: worktree, home: scratch() });
+    expect(envelope(built.stderr).error?.code).toBe("sync_failed");
+  } finally {
+    chmodSync(join(worktree, "Locked"), 0o755);
+  }
+});
+
+// Clones products with `cp -c`, which only macOS has.
+test.skipIf(process.platform !== "darwin")(
+  "products land where the caller asked: a build setting, a used DerivedData, a --products-to checked first",
+  async () => {
+    const repo = makeRepo({ "A.swift": "a", ".gitignore": "out/\ndd/\n" });
+    const worktree = addWorktree(repo, "task-1");
+    const home = scratch();
+    const bin = join(scratch(), "bin");
+    write(bin, {
+      xcodebuild: [
+        "#!/bin/sh",
+        "echo ran",
+        "while [ $# -gt 0 ]; do",
+        '  case "$1" in',
+        '    -derivedDataPath) mkdir -p "$2/Build/Products/Debug" && echo built > "$2/Build/Products/Debug/App"; shift ;;',
+        '    -resultBundlePath) mkdir -p "$2"; shift ;;',
+        '    SYMROOT=*) d="${1#SYMROOT=}/Debug"; rm -rf "$d/App.app"; mkdir -p "$d/App.app"; echo built > "$d/App";',
+        '      echo plist > "$d/App.app/Info.plist"; [ -n "$RESOURCE" ] && echo r > "$d/App.app/Resource" ;;',
+        "  esac",
+        "  shift",
+        "done",
+        '[ -n "$CALLER_EDIT" ] && mkdir -p "$(dirname "$CALLER_EDIT")" && echo caller > "$CALLER_EDIT"',
+        "true",
+      ].join("\n"),
+    });
+    chmodSync(join(bin, "xcodebuild"), 0o755);
+    const env = { PATH: `${bin}:${process.env.PATH}` };
+
+    const withResource = { ...env, RESOURCE: "1" };
+    const viaSetting = await cli(["xcodebuild", `SYMROOT=${worktree}/out`, "build"], {
+      cwd: worktree,
+      home,
+      env: withResource,
+    });
+    expect(viaSetting.code).toBe(0);
+    expect(readFileSync(join(worktree, "out/Debug/App"), "utf8")).toBe("built\n");
+    expect(existsSync(join(worktree, "out/Debug/App.app/Resource"))).toBe(true);
+    write(worktree, { "out/Debug/Notes.txt": "mine" });
+    const rebuilt = await cli(["xcodebuild", `SYMROOT=${worktree}/out`, "build"], { cwd: worktree, home, env });
+    expect(rebuilt.code).toBe(0);
+    expect(existsSync(join(worktree, "out/Debug/App.app/Resource"))).toBe(false);
+    expect(readFileSync(join(worktree, "out/Debug/Notes.txt"), "utf8")).toBe("mine");
+
+    const nothingBuilt = await cli(["xcodebuild", `DSTROOT=${worktree}/dst`, "build"], { cwd: worktree, home, env });
+    expect(nothingBuilt.code).toBe(0);
+
+    const callerEdit = { ...env, CALLER_EDIT: join(worktree, "shared/Debug/App") };
+    const both = await cli(["xcodebuild", `SYMROOT=${worktree}/shared`, "build"], {
+      cwd: worktree,
+      home,
+      env: callerEdit,
+    });
+    expect(both.code).toBe(0);
+    expect(both.stderr).toContain("left alone");
+    expect(readFileSync(join(worktree, "shared/Debug/App"), "utf8")).toBe("caller\n");
+
+    const gitFile = readFileSync(join(worktree, ".git"), "utf8");
+    write(worktree, { "A.swift": "edited during the build" });
+    const intoSources = await cli(["xcodebuild", `SYMROOT=${worktree}`, "build"], { cwd: worktree, home, env });
+    expect(intoSources.code).toBe(0);
+    expect(readFileSync(join(worktree, ".git"), "utf8")).toBe(gitFile);
+    expect(readFileSync(join(worktree, "A.swift"), "utf8")).toBe("edited during the build");
+
+    write(worktree, { "dd/Build/Products/Old/Stale": "from a plain xcodebuild" });
+    const intoUsed = await cli(["xcodebuild", "-derivedDataPath", "dd", "build"], { cwd: worktree, home, env });
+    expect(intoUsed.code).toBe(0);
+    expect(readFileSync(join(worktree, "dd/Build/Products/Debug/App"), "utf8")).toBe("built\n");
+    expect(readFileSync(join(worktree, "dd/Build/Products/Old/Stale"), "utf8")).toBe("from a plain xcodebuild");
+
+    const filledDuring = await cli(
+      ["xcodebuild", "--products-to", "fresh", "-resultBundlePath", "fresh/Result.xcresult", "build"],
+      { cwd: worktree, home, env },
+    );
+    expect(filledDuring.code).toBe(101);
+    expect(existsSync(join(worktree, "fresh/Result.xcresult"))).toBe(true);
+
+    write(worktree, { "taken/mine.txt": "keep" });
+    const refused = await cli(["xcodebuild", "--products-to", "taken", "build"], { cwd: worktree, home, env });
+    expect(refused.code).toBe(101);
+    expect(refused.stdout).toBe("");
+    expect(readFileSync(join(worktree, "taken/mine.txt"), "utf8")).toBe("keep");
+  },
+);
 
 test("when every slot is busy the command says who holds them and fails with slots_busy", async () => {
   const repo = makeRepo({ "A.swift": "a" });

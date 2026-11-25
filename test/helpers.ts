@@ -76,6 +76,7 @@ export function lockEnvFor(pid: number, processes: ProcessTable, clock = { now: 
 export interface CliResult {
   readonly code: number;
   readonly stdout: string;
+  readonly stdoutBytes: Buffer;
   readonly stderr: string;
 }
 
@@ -87,11 +88,11 @@ export interface CliSetup {
 
 /** Runs the CLI in-process against a private slots root and config. */
 export async function cli(argv: readonly string[], setup: CliSetup): Promise<CliResult> {
-  let stdout = "";
-  let stderr = "";
+  const stdout: Buffer[] = [];
+  const stderr: Buffer[] = [];
   const deps: Deps = {
-    stdout: { write: (text) => void (stdout += text) },
-    stderr: { write: (text) => void (stderr += text) },
+    stdout: { write: (chunk) => void stdout.push(Buffer.from(chunk)) },
+    stderr: { write: (chunk) => void stderr.push(Buffer.from(chunk)) },
     stdoutIsTTY: false,
     env: {
       PATH: process.env.PATH,
@@ -109,7 +110,8 @@ export async function cli(argv: readonly string[], setup: CliSetup): Promise<Cli
     sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   };
   const code = await run(argv, deps);
-  return { code, stdout, stderr };
+  const stdoutBytes = Buffer.concat(stdout);
+  return { code, stdout: stdoutBytes.toString(), stdoutBytes, stderr: Buffer.concat(stderr).toString() };
 }
 
 export const lastJson = (text: string): unknown => JSON.parse(text.trim().split("\n").at(-1) ?? "null");
