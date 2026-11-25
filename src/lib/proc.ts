@@ -7,10 +7,40 @@ export interface Completed {
   readonly stderr: string;
 }
 
+// `git rev-parse --local-env-vars`: a git hook exports some, which would aim git in the slot at the caller's repository.
+const GIT_REPOSITORY_ENV = [
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_CONFIG",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_CONFIG_COUNT",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_IMPLICIT_WORK_TREE",
+  "GIT_GRAFT_FILE",
+  "GIT_INDEX_FILE",
+  "GIT_NO_REPLACE_OBJECTS",
+  "GIT_REPLACE_REF_BASE",
+  "GIT_PREFIX",
+  "GIT_SHALLOW_FILE",
+  "GIT_COMMON_DIR",
+];
+
+export function withoutGitRepositoryEnv(env: Readonly<Record<string, string | undefined>>) {
+  const kept = { ...env };
+  for (const name of GIT_REPOSITORY_ENV) delete kept[name];
+  return kept;
+}
+
 /** Runs a short helper command to completion; a missing executable is `tool_missing`, not an exception. */
 export function exec(argv: readonly string[], cwd?: string): Result<Completed, XcslotError> {
   try {
-    const done = Bun.spawnSync([...argv], { ...(cwd !== undefined && { cwd }), stdout: "pipe", stderr: "pipe" });
+    const done = Bun.spawnSync([...argv], {
+      ...(cwd !== undefined && { cwd }),
+      env: withoutGitRepositoryEnv(process.env),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     return ok({ code: done.exitCode, stdout: done.stdout.toString(), stderr: done.stderr.toString() });
   } catch (error) {
     return err(

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { Deps } from "../src/context.ts";
-import { type ProcessTable, systemProcesses } from "../src/lib/proc.ts";
+import { type ProcessTable, systemProcesses, withoutGitRepositoryEnv } from "../src/lib/proc.ts";
 import { run } from "../src/run.ts";
 import type { LockEnv } from "../src/slot/lock.ts";
 
@@ -20,7 +20,7 @@ export function scratch(): string {
 }
 
 export function sh(cwd: string, ...argv: string[]): string {
-  const done = Bun.spawnSync(argv, { cwd, stdout: "pipe", stderr: "pipe" });
+  const done = Bun.spawnSync(argv, { cwd, env: withoutGitRepositoryEnv(process.env), stdout: "pipe", stderr: "pipe" });
   if (done.exitCode !== 0) throw new Error(`${argv.join(" ")}: ${done.stderr.toString()}`);
   return done.stdout.toString();
 }

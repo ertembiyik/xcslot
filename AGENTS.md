@@ -63,6 +63,9 @@ Use bun for everything. `bun lint` joins `verify` when Bun 1.4.6 is stable; it i
 - **Debug app bundles keep their code in `<Name>.debug.dylib`**, not in the small launcher executable.
 - **`bun fmt` reflows HTML text.** Terminal text in `scripts/art/*.html` lives in `<pre>`, which it leaves alone;
   anything else loses its line breaks, and the next `bun run art` renders it as one line.
+- **A git hook exports `GIT_DIR`.** Inherited, it aims every git call at the hook's repository: tests run by the
+  pre-push hook in a worktree once made the repository bare and committed into its branch. `exec`, the wrapped
+  command and the test helper drop git's repository variables.
 - **`xcodebuild -list` without `-derivedDataPath` writes package checkouts into Xcode's default DerivedData.**
   Metadata queries go through the slot too.
 
