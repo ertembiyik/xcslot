@@ -33,8 +33,9 @@ xcslot xcodebuild -scheme App -destination 'generic/platform=iOS Simulator' buil
 Put `xcslot` in front of the command you already run. Every argument passes through, and the output and exit
 code come back unchanged, with paths pointing at your worktree.
 
-Works with Xcode projects and workspaces, Tuist (generated inside the slot), Swift packages and any generator
-you declare in `.xcslot.json`. On [IceCubesApp](https://github.com/Dimillian/IceCubesApp), a fresh worktree's
+Works with any coding agent that runs shell commands: Claude Code, Codex, Cursor and the rest. Builds Xcode
+projects and workspaces, Tuist (generated inside the slot), Swift packages and any generator you declare in
+`.xcslot.json`. On [IceCubesApp](https://github.com/Dimillian/IceCubesApp), a fresh worktree's
 first build drops from 85 s to 4.8 s; [benchmarks](docs/benchmarks.md) has the method and more numbers.
 
 ## Install
