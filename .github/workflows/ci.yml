@@ -13,6 +13,29 @@ permissions:
   contents: read
 
 jobs:
+  # A pull request that touches no code skips test, build and macos: a skipped job passes a required check.
+  # They still run when this job fails, so a broken diff never turns into a pass.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          code=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] && ! git diff --name-only "$BASE" HEAD |
+            grep -qE '^(src|test|scripts|skills|\.github/(workflows|scripts))/|^(package\.json|bun\.lock|bunfig\.toml|tsconfig\.json)$'; then
+            code=false
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -35,6 +58,8 @@ jobs:
           exit $failed
 
   test:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -48,6 +73,8 @@ jobs:
       - run: timeout 30 bun test --randomize
 
   build:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -63,6 +90,8 @@ jobs:
   # Real xcodebuild, APFS clones and dsymutil. There is no merge queue on a personal account, so this is a
   # required check on the pull request itself; the three jobs above still answer within a minute.
   macos:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
     runs-on: macos-26
     timeout-minutes: 15
     steps:
