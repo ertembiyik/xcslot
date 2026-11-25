@@ -93,7 +93,7 @@ function copyEntry(from: string, stats: Stats, to: string): void {
 export function listTree(top: string, includeIgnored: readonly string[]): Result<string[], XcslotError> {
   // A checked-out submodule is listed by its files; on its own, a gitlink is a directory that mirrors as nothing.
   const tracked = gitList(top, "ls-files", "-c", "--recurse-submodules");
-  const untracked = gitList(top, "ls-files", "-o", "--exclude-standard");
+  const untracked = untrackedIn(top, "");
   return Result.combine([tracked, untracked]).andThen(([cached, others]) => {
     const visible = [...cached, ...others];
     if (includeIgnored.length === 0) return ok(entriesOnly(visible));
@@ -101,6 +101,38 @@ export function listTree(top: string, includeIgnored: readonly string[]): Result
       entriesOnly([...visible, ...ignored.filter((path) => !NEVER_MIRRORED.test(path))]),
     );
   });
+}
+
+/** Two paths that name the same file or folder when case is ignored, if any. */
+export function caseClash(paths: readonly string[]): [string, string] | undefined {
+  const seen = new Map<string, string>();
+  for (const path of paths) {
+    const parts = path.split("/");
+    for (let depth = 1; depth <= parts.length; depth++) {
+      const name = parts.slice(0, depth).join("/");
+      const other = seen.get(name.toLowerCase());
+      if (other !== undefined && other !== name) return [other, name];
+      seen.set(name.toLowerCase(), name);
+    }
+  }
+  return undefined;
+}
+
+/** Untracked files git does not ignore, in the repository and in each checked-out submodule, from `top`. */
+function untrackedIn(top: string, prefix: string): Result<string[], XcslotError> {
+  const dir = join(top, prefix);
+  return Result.combine([gitList(dir, "ls-files", "-o", "--exclude-standard"), gitList(dir, "ls-files", "-s")]).andThen(
+    ([others, staged]) => {
+      const submodules = staged
+        .filter((line) => line.startsWith("160000 "))
+        .map((line) => line.slice(line.indexOf("\t") + 1))
+        .filter((path) => existsSync(join(dir, path, ".git")));
+      return Result.combine(submodules.map((path) => untrackedIn(top, join(prefix, path)))).map((nested) => [
+        ...others.map((path) => join(prefix, path)),
+        ...nested.flat(),
+      ]);
+    },
+  );
 }
 
 /** Marks a folder of products handed out by xcslot; such a folder is an output, never a build input. */
@@ -137,13 +169,6 @@ export function syncInto(
   const listed = listTree(top, includeIgnored);
   if (listed.isErr()) return err(listed.error);
 
-  // git lists a tracked file deleted in the worktree; what is mirrored is what is on disk.
-  const sources = new Map<string, Stats>();
-  for (const path of listed.value) {
-    const source = lstat(join(top, path));
-    if (source && !source.isDirectory()) sources.set(path, source);
-  }
-  const byFoldedCase = new Map([...sources.keys()].map((path) => [path.toLowerCase(), path]));
   const inSlot = gitList(slotSrc, "ls-files", "-co", "--exclude-standard", "--deduplicate");
   if (inSlot.isErr()) return err(inSlot.error);
 
@@ -152,6 +177,21 @@ export function syncInto(
   let changed = 0;
   let removed = 0;
   try {
+    // git lists a tracked file deleted in the worktree; what is mirrored is what is on disk.
+    const sources = new Map<string, Stats>();
+    for (const path of listed.value) {
+      const source = lstat(join(top, path));
+      if (source && !source.isDirectory()) sources.set(path, source);
+    }
+    const byFoldedCase = new Map([...sources.keys()].map((path) => [path.toLowerCase(), path]));
+    const clash = lstat(join(slotSrc, ".GIT")) ? caseClash([...sources.keys()]) : undefined;
+    if (clash) {
+      return err(
+        failure("usage_error", `${clash[0]} and ${clash[1]} differ only in case, and the slot's volume ignores case`, {
+          hint: "Rename one of them; a case-insensitive Mac cannot hold both",
+        }),
+      );
+    }
     // Removals first, so a path that turned from a file into a directory, or back, is free before the copy.
     for (const path of new Set([...entriesOnly(inSlot.value), ...Object.keys(state.files)])) {
       if (sources.has(path)) continue;

@@ -15,7 +15,7 @@ import { sweep } from "../slot/remove.ts";
 import { readState, writeState } from "../slot/state.ts";
 import { syncInto, writeBack } from "../slot/sync.ts";
 import { needsNoProject, rewriteArgs } from "../xcodebuild/args.ts";
-import { checkProductsDestination, cloneInto, cloneProducts, embedDebugSymbols } from "../xcodebuild/handout.ts";
+import { checkProductsDestination, cloneProducts, embedDebugSymbols, mergeProducts } from "../xcodebuild/handout.ts";
 import { createPathMapper, type LineMapper, pumpLines } from "../xcodebuild/output-map.ts";
 
 export interface PassthroughOptions {
@@ -236,11 +236,20 @@ export async function runInSlot(
     writeState(slot.state, state);
 
     let products = `${join(slot.derivedData, "Build", "Products")} (valid until the next build in slot ${slot.n})`;
-    if (ran.value === 0 && asked !== undefined) {
-      const cloned = cloneProducts(slot.derivedData, asked);
+    // A file both the build and the caller changed stays the caller's, here as in write-back.
+    const conflicts = new Set(back.value.conflicts.map((path) => join(repo.value.worktree, path)));
+    const keep = (path: string) => conflicts.has(path);
+    const handOut = async (from: string, to: string, merge: boolean) => {
+      const cloned = merge ? mergeProducts(from, to, keep) : cloneProducts(slot.derivedData, to).map(() => 1);
       if (cloned.isErr()) return err(cloned.error);
-      const symbols = options.dsym ? await embedDebugSymbols(asked, slot.src, repo.value.worktree) : 0;
-      products = `${asked}${symbols > 0 ? ` (${symbols} dSYMs)` : ""}`;
+      if (cloned.value === 0 || !options.dsym) return ok(0);
+      return ok(await embedDebugSymbols(to, slot.src, repo.value.worktree));
+    };
+    if (ran.value === 0 && asked !== undefined) {
+      const slotProducts = join(slot.derivedData, "Build", "Products");
+      const done = await handOut(slotProducts, asked, options.productsTo === undefined);
+      if (done.isErr()) return err(done.error);
+      products = `${asked}${done.value > 0 ? ` (${done.value} dSYMs)` : ""}`;
     }
     for (const { from: built, to } of ran.value === 0 ? (rewritten?.handOut ?? []) : []) {
       // Products go back only into a folder of outputs; one that holds tracked files is the caller's source.
@@ -249,9 +258,8 @@ export async function runInSlot(
         deps.stderr.write(`xcslot: left the products in ${built}: ${to} holds tracked files\n`);
         continue;
       }
-      const cloned = cloneInto(built, to);
-      if (cloned.isErr()) return err(cloned.error);
-      if (options.dsym) await embedDebugSymbols(to, slot.src, repo.value.worktree);
+      const done = await handOut(built, to, true);
+      if (done.isErr()) return err(done.error);
     }
     deps.stderr.write(
       `xcslot: slot ${slot.n}: ${command[0]} exited ${ran.value} after ${seconds(deps.now() - started)}s; ${wrapped === "xcodebuild" ? `products: ${products}; ` : ""}log: ${logPath}\n`,

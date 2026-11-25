@@ -52,7 +52,18 @@ function isStale(dir: string, env: LockEnv): boolean {
   }
 }
 
-/** Moves a dead owner's lock aside. Only the holder of `<dir>.breaking` may, so no one moves a lock just retaken. */
+function writeOwner(dir: string, label: string, env: LockEnv): void {
+  const startedUtc = env.processes.startOf(env.pid) ?? "";
+  const started = env.processes.localStartOf?.(env.pid) ?? startedUtc;
+  const owner: Owner = { pid: env.pid, started, startedUtc, label, since: env.now() };
+  writeFileSync(join(dir, "owner.tmp"), JSON.stringify(owner));
+  renameSync(join(dir, "owner.tmp"), join(dir, "owner.json"));
+}
+
+/**
+ * Moves a dead owner's lock aside. Only the holder of `<dir>.breaking` may, so no one moves a lock just retaken;
+ * that guard has an owner too, so a breaker that pauses keeps it for as long as it lives.
+ */
 function breakStale(dir: string, env: LockEnv): boolean {
   const breaking = `${dir}.breaking`;
   try {
@@ -62,6 +73,7 @@ function breakStale(dir: string, env: LockEnv): boolean {
     return false;
   }
   try {
+    writeOwner(breaking, "breaking a stale lock", env);
     if (!isStale(dir, env)) return false;
     const grave = `${dir}.stale-${env.pid}-${env.now()}`;
     renameSync(dir, grave);
@@ -83,11 +95,7 @@ export function tryLock(dir: string, label: string, env: LockEnv): boolean {
       if (attempt === 1 || !isStale(dir, env) || !breakStale(dir, env)) return false;
       continue;
     }
-    const startedUtc = env.processes.startOf(env.pid) ?? "";
-    const started = env.processes.localStartOf?.(env.pid) ?? startedUtc;
-    const owner: Owner = { pid: env.pid, started, startedUtc, label, since: env.now() };
-    writeFileSync(join(dir, "owner.tmp"), JSON.stringify(owner));
-    renameSync(join(dir, "owner.tmp"), join(dir, "owner.json"));
+    writeOwner(dir, label, env);
     return true;
   }
   return false;

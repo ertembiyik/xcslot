@@ -18,6 +18,7 @@ import { type PrepareStep, prepare } from "../src/slot/prepare.ts";
 import { removeSlot, rotateLogs, sweep } from "../src/slot/remove.ts";
 import { emptyState, readState, writeState } from "../src/slot/state.ts";
 import { syncInto, writeBack } from "../src/slot/sync.ts";
+import { debuggableBinaries } from "../src/xcodebuild/handout.ts";
 import { addWorktree, fakeProcesses, headOf, lockEnvFor, makeRepo, scratch, sh, write } from "./helpers.ts";
 
 test("a lock has one holder, survives nothing but its owner, and is reclaimed when the owner is gone", () => {
@@ -80,6 +81,37 @@ test("two callers taking over the same dead lock end with one holder", () => {
   const bGot = tryLock(dir, "B", b);
   expect({ aGot, bGot }).toEqual({ aGot: true, bGot: false });
   expect(holderOf(dir, b)?.label).toBe("A");
+});
+
+test("a breaker owns its guard while it checks the dead lock, so a pause cannot let anyone take the guard", () => {
+  const dir = join(scratch(), "lock");
+  expect(tryLock(dir, "dead", lockEnvFor(10, fakeProcesses({ 10: "Mon 1" })))).toBe(true);
+  let guardOwner: number | undefined;
+  const b = lockEnvFor(20, {
+    startOf: (pid) => {
+      const guard = join(`${dir}.breaking`, "owner.json");
+      if (pid === 10 && existsSync(guard)) guardOwner = JSON.parse(readFileSync(guard, "utf8")).pid;
+      return pid === 20 ? "Mon 2" : undefined;
+    },
+  });
+  expect(tryLock(dir, "B", b)).toBe(true);
+  expect(guardOwner).toBe(20);
+  expect(existsSync(`${dir}.breaking`)).toBe(false);
+});
+
+test("the binaries that get dSYMs include plain ones at the folder's root and in nested bundles", () => {
+  const products = scratch();
+  const machO = Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0, 0, 0, 0]);
+  for (const path of ["tool", "Debug/lib.dylib", "App.app/App", "App.app/PlugIns/Ext.appex/Ext"]) {
+    write(products, { [path]: "" });
+    writeFileSync(join(products, path), machO);
+  }
+  write(products, { readme: "text", "App.app/Info.plist": "plist" });
+  expect(
+    debuggableBinaries(products)
+      .map((path) => path.slice(products.length + 1))
+      .sort(),
+  ).toEqual(["App.app/App", "App.app/PlugIns/Ext.appex/Ext", "Debug/lib.dylib", "tool"]);
 });
 
 test("a lock folder without an owner is taken over only after the grace period", () => {

@@ -4,6 +4,7 @@ import { nextCommand, READ_ONLY_COMMANDS, shellQuote } from "../src/lib/next.ts"
 import { catalog } from "../src/commands/misc.ts";
 import { createProgram } from "../src/run.ts";
 import { rewriteArgs, needsNoProject } from "../src/xcodebuild/args.ts";
+import { caseClash } from "../src/slot/sync.ts";
 import { createPathMapper, pumpLines } from "../src/xcodebuild/output-map.ts";
 import { orderSlots } from "../src/slot/select.ts";
 import { emptyState } from "../src/slot/state.ts";
@@ -150,6 +151,12 @@ test("output paths point at the worktree, except for files that exist only in th
   const passed: Uint8Array[] = [];
   await pumpLines(new Blob([binary]).stream(), spaced, (chunk) => void passed.push(chunk));
   expect(Buffer.concat(passed)).toEqual(Buffer.from(binary));
+});
+
+test("paths that a case-insensitive volume would merge are found", () => {
+  expect(caseClash(["Assets/icon.png", "assets"])).toEqual(["Assets", "assets"]);
+  expect(caseClash(["A.swift", "a.swift"])).toEqual(["A.swift", "a.swift"]);
+  expect(caseClash(["Sources/A.swift", "Sources/B.swift", "README.md"])).toBeUndefined();
 });
 
 test("slot choice: own slot, then the nearest by changed files, the longest unused on a tie, never-built last", () => {
