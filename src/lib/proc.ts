@@ -32,6 +32,40 @@ export function withoutGitRepositoryEnv(env: Readonly<Record<string, string | un
   return kept;
 }
 
+// Xcode hashes the whole environment into its build description, so a variable that differs per shell or agent
+// session makes the next build re-plan: about 4 s on IceCubesApp, on Xcode 27.0 and 27.3 beta 2.
+const SESSION_ENV = [
+  "OLDPWD",
+  "SHLVL",
+  "_",
+  "TERM_SESSION_ID",
+  "ITERM_SESSION_ID",
+  "SECURITYSESSIONID",
+  "Apple_PubSub_Socket_Render",
+  "TMUX",
+  "TMUX_PANE",
+  "WINDOWID",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "LC_TERMINAL",
+  "LC_TERMINAL_VERSION",
+  "XPC_FLAGS",
+  "XPC_SERVICE_NAME",
+  "__CFBundleIdentifier",
+];
+const SESSION_ENV_PREFIXES = ["CLAUDE_", "CLAUDECODE", "CODEX_", "CURSOR_"];
+
+/** The environment of a command run in a slot: the same for every worktree and agent session that builds there. */
+export function slotCommandEnv(env: Readonly<Record<string, string | undefined>>, cwd: string) {
+  const kept = withoutGitRepositoryEnv(env);
+  for (const name of SESSION_ENV) delete kept[name];
+  for (const name of Object.keys(kept)) {
+    if (SESSION_ENV_PREFIXES.some((prefix) => name.startsWith(prefix))) delete kept[name];
+  }
+  kept.PWD = cwd;
+  return kept;
+}
+
 /** Runs a short helper command to completion; a missing executable is `tool_missing`, not an exception. */
 export function exec(argv: readonly string[], cwd?: string): Result<Completed, XcslotError> {
   try {

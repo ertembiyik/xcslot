@@ -2,9 +2,9 @@
 
 What a fresh worktree's first build costs, and what each way of avoiding it buys.
 
-![Build time against fresh worktrees, in minutes: plain xcodebuild climbs to 17 minutes over 12 worktrees; through xcslot the line flattens once the three slots are warm and ends near 5 minutes, 3.4 times less](../.github/assets/chart.png)
+![Build time against fresh worktrees, in minutes: plain xcodebuild climbs to 17 minutes over 12 worktrees; through xcslot the line flattens once the three slots are warm and ends near 5 minutes, 3.5 times less](../.github/assets/chart.png)
 
-The chart is drawn from the figures below: 85 s for each cold build, 4.8 s for a fresh worktree through a warm
+The chart is drawn from the figures below: 85 s for each cold build, 3.9 s for a fresh worktree through a warm
 slot, three slots, each building cold once.
 
 ## Setup
@@ -23,11 +23,14 @@ slot, three slots, each building cold once.
 | Its own DerivedData (cold)                        | 85 s (82 to 107 s) | 1,510                           | 35 s                     |
 | DerivedData cloned in from another worktree       | 107 s              | 1,510                           | 42 s                     |
 | Xcode's compilation cache shared across worktrees | 43 s               | 0 misses, every task still runs | 32 s                     |
-| **Through a warm slot**                           | **4.8 s**          | **0**                           | 33 s                     |
+| **Through a warm slot**                           | **3.9 s**          | **0**                           | 33 s                     |
 
 - The cold figure is the first of four runs; the four ranged from 82 to 107 s.
-- The slot figure is the median of three fresh worktrees (4.7, 4.8 and 19 s), plus 0.2 s to mirror the
-  worktree. The 19 s run was the first after the slot's own cold build.
+- The slot figure is the median of three fresh worktrees (4.9, 3.9 and 3.9 s, xcslot 0.1.6), each built from its
+  own agent session: a different `PWD`, `OLDPWD`, `TERM_SESSION_ID` and `CLAUDE_CODE_SESSION_ID`. It includes
+  0.2 s to mirror the worktree.
+- xcslot 0.1.5 took 13.4, 9.9 and 8.0 s for the same three. Xcode hashes the environment into its build plan, and
+  0.1.5 passed those variables through, so each worktree re-planned: tool probes and every Info.plist again.
 - Cloning DerivedData is an APFS clone of the whole folder (5 s) into a worktree at another path. Nothing is
   reused, because the build data names the old path.
 - The compilation cache was populated by one build and read by a worktree at another path, with prefix

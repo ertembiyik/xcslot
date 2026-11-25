@@ -1,6 +1,6 @@
 {
   "name": "xcslot",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Warm Xcode build slots for parallel coding agents",
   "license": "MIT",
   "private": true,
