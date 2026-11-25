@@ -1,7 +1,7 @@
 import type { NextCommand, XcslotError } from "./errors.ts";
 
 export interface Writer {
-  write(text: string): unknown;
+  write(chunk: string | Uint8Array): unknown;
 }
 
 export type OutputMode = "json" | "human";

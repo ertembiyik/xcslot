@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, realpathSync } from "node:fs";
 import { constants } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { prepareSteps } from "../adapters/steps.ts";
@@ -15,8 +15,8 @@ import { sweep } from "../slot/remove.ts";
 import { readState, writeState } from "../slot/state.ts";
 import { syncInto, writeBack } from "../slot/sync.ts";
 import { needsNoProject, rewriteArgs } from "../xcodebuild/args.ts";
-import { cloneProducts, embedDebugSymbols } from "../xcodebuild/handout.ts";
-import { createPathMapper, pumpLines } from "../xcodebuild/output-map.ts";
+import { checkProductsDestination, cloneInto, cloneProducts, embedDebugSymbols } from "../xcodebuild/handout.ts";
+import { createPathMapper, type LineMapper, pumpLines } from "../xcodebuild/output-map.ts";
 
 export interface PassthroughOptions {
   readonly from?: string;
@@ -33,7 +33,7 @@ interface Child {
   readonly argv: readonly string[];
   readonly cwd: string;
   readonly env?: Record<string, string>;
-  readonly map?: (line: string) => string;
+  readonly map?: LineMapper;
   readonly logPath?: string;
   /** Where the child's stdout goes; a preparation step's goes to stderr so stdout stays the wrapped command's. */
   readonly stdoutTo: "stdout" | "stderr";
@@ -65,16 +65,15 @@ async function spawnThrough(deps: Deps, child: Child): Promise<Result<number, Xc
     return () => process.off(signal, handler);
   });
   const log = child.logPath === undefined ? undefined : createWriteStream(child.logPath);
-  const map = child.map ?? ((line: string) => line);
   const out = child.stdoutTo === "stdout" ? deps.stdout : deps.stderr;
   await Promise.all([
-    pumpLines(proc.stdout, map, (text) => {
-      out.write(text);
-      log?.write(text);
+    pumpLines(proc.stdout, child.map, (chunk) => {
+      out.write(chunk);
+      log?.write(chunk);
     }),
-    pumpLines(proc.stderr, map, (text) => {
-      deps.stderr.write(text);
-      log?.write(text);
+    pumpLines(proc.stderr, child.map, (chunk) => {
+      deps.stderr.write(chunk);
+      log?.write(chunk);
     }),
   ]);
   const code = await proc.exited;
@@ -115,7 +114,9 @@ export async function runInSlot(
       }),
     );
   }
-  const from = options.from === undefined ? deps.cwd : resolve(deps.cwd, options.from);
+  const given = options.from === undefined ? deps.cwd : resolve(deps.cwd, options.from);
+  // git reports the worktree by its real path; a symlinked spelling of `from` would point outside it.
+  const from = existsSync(given) ? realpathSync(given) : given;
   const command = wrapped === "xcodebuild" ? ["xcodebuild", ...args] : [...args];
 
   // Inside a slot already (a script run by `xcslot run` that builds): use that slot, take no second one.
@@ -193,6 +194,18 @@ export async function runInSlot(
       `${new Date(deps.now()).toISOString().replaceAll(":", "-")}-slot${slot.n}.log`,
     );
 
+    const asked =
+      options.productsTo !== undefined
+        ? resolve(deps.cwd, options.productsTo)
+        : rewritten?.derivedDataAsked !== undefined
+          ? join(rewritten.derivedDataAsked, "Build", "Products")
+          : undefined;
+    // Checked before the build, so a folder that cannot take the products never turns a good build into a failure.
+    if (options.productsTo !== undefined && asked !== undefined) {
+      const usable = checkProductsDestination(asked);
+      if (usable.isErr()) return err(usable.error);
+    }
+
     const permit = await acquirePermit(wait, root, config.value.maxConcurrent, label);
     if (permit.isErr()) return err(permit.error);
     const started = deps.now();
@@ -222,18 +235,17 @@ export async function runInSlot(
     state.usedAt = deps.now();
     writeState(slot.state, state);
 
-    const asked =
-      options.productsTo !== undefined
-        ? resolve(deps.cwd, options.productsTo)
-        : rewritten?.derivedDataAsked !== undefined
-          ? join(rewritten.derivedDataAsked, "Build", "Products")
-          : undefined;
     let products = `${join(slot.derivedData, "Build", "Products")} (valid until the next build in slot ${slot.n})`;
     if (ran.value === 0 && asked !== undefined) {
       const cloned = cloneProducts(slot.derivedData, asked);
       if (cloned.isErr()) return err(cloned.error);
       const symbols = options.dsym ? await embedDebugSymbols(asked, slot.src, repo.value.worktree) : 0;
       products = `${asked}${symbols > 0 ? ` (${symbols} dSYMs)` : ""}`;
+    }
+    for (const { from: built, to } of ran.value === 0 ? (rewritten?.handOut ?? []) : []) {
+      const cloned = cloneInto(built, to);
+      if (cloned.isErr()) return err(cloned.error);
+      if (options.dsym) await embedDebugSymbols(to, slot.src, repo.value.worktree);
     }
     deps.stderr.write(
       `xcslot: slot ${slot.n}: ${command[0]} exited ${ran.value} after ${seconds(deps.now() - started)}s; ${wrapped === "xcodebuild" ? `products: ${products}; ` : ""}log: ${logPath}\n`,

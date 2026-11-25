@@ -108,5 +108,6 @@ export function ensureCheckout(repo: Repo, slot: SlotPaths, head: string): Resul
   if (existsSync(`${slot.src}/.git`)) return ok(false);
   mkdirSync(slot.dir, { recursive: true });
   writeFileSync(repoRecordPath(repo.dir), JSON.stringify({ main: repo.main }));
-  return git(repo.main, "worktree", "add", "--detach", slot.src, head).map(() => true);
+  // -f re-adds a slot whose folder was deleted by hand; the caller's worktree works for a bare repository too.
+  return git(repo.worktree, "worktree", "add", "-f", "--detach", slot.src, head).map(() => true);
 }

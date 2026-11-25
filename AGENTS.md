@@ -66,6 +66,10 @@ Use bun for everything. `bun lint` joins `verify` when Bun 1.4.6 is stable; it i
 - **A git hook exports `GIT_DIR`.** Inherited, it aims every git call at the hook's repository: tests run by the
   pre-push hook in a worktree once made the repository bare and committed into its branch. `exec`, the wrapped
   command and the test helper drop git's repository variables.
+- **APFS is case-insensitive by default.** A case-only rename leaves two listed paths naming one file; sync
+  renames it instead of deleting it. A path whose parent became a file throws `ENOTDIR` from `lstat`, not `ENOENT`.
+- **A slot's parents can be symlinks.** A worktree that turned a symlink into a folder would have sync write
+  through the slot's old link; sync replaces such a parent before copying and never removes through one.
 - **`xcodebuild -list` without `-derivedDataPath` writes package checkouts into Xcode's default DerivedData.**
   Metadata queries go through the slot too.
 

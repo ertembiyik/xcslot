@@ -106,6 +106,17 @@ export async function embedDebugSymbols(products: string, slotSrc: string, workt
 export function cloneProducts(derivedData: string, destination: string): Result<string, XcslotError> {
   const products = join(derivedData, "Build", "Products");
   if (!existsSync(products)) return ok(destination);
+  rmSync(destination, { recursive: true, force: true });
+  mkdirSync(dirname(destination), { recursive: true });
+  return exec(["cp", "-c", "-R", products, destination]).andThen((done) => {
+    if (done.code !== 0) return err(failure("sync_failed", `Could not clone products: ${done.stderr.trim()}`));
+    writeFileSync(join(destination, PRODUCTS_MARKER), "");
+    return ok(destination);
+  });
+}
+
+/** A `--products-to` folder is replaced on every build, so it must be new, empty or one xcslot made. */
+export function checkProductsDestination(destination: string): Result<string, XcslotError> {
   if (
     existsSync(destination) &&
     readdirSync(destination).length > 0 &&
@@ -117,11 +128,14 @@ export function cloneProducts(derivedData: string, destination: string): Result<
       }),
     );
   }
-  rmSync(destination, { recursive: true, force: true });
-  mkdirSync(dirname(destination), { recursive: true });
-  return exec(["cp", "-c", "-R", products, destination]).andThen((done) => {
-    if (done.code !== 0) return err(failure("sync_failed", `Could not clone products: ${done.stderr.trim()}`));
-    writeFileSync(join(destination, PRODUCTS_MARKER), "");
-    return ok(destination);
-  });
+  return ok(destination);
+}
+
+/** Clones a folder's contents over another, leaving whatever else the destination holds. */
+export function cloneInto(from: string, to: string): Result<string, XcslotError> {
+  if (!existsSync(from)) return ok(to);
+  mkdirSync(to, { recursive: true });
+  return exec(["cp", "-c", "-R", `${from}/.`, to]).andThen((done) =>
+    done.code === 0 ? ok(to) : err(failure("sync_failed", `Could not clone ${from} to ${to}: ${done.stderr.trim()}`)),
+  );
 }

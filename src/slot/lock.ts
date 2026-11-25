@@ -45,20 +45,35 @@ function isStale(dir: string, env: LockEnv): boolean {
   }
 }
 
-/** mkdir is atomic, so one caller wins; a lock whose owner died is moved aside first, which is atomic too. */
+/** Moves a dead owner's lock aside. Only the holder of `<dir>.breaking` may, so no one moves a lock just retaken. */
+function breakStale(dir: string, env: LockEnv): boolean {
+  const breaking = `${dir}.breaking`;
+  try {
+    mkdirSync(breaking);
+  } catch {
+    if (isStale(breaking, env)) rmSync(breaking, { recursive: true, force: true });
+    return false;
+  }
+  try {
+    if (!isStale(dir, env)) return false;
+    const grave = `${dir}.stale-${env.pid}-${env.now()}`;
+    renameSync(dir, grave);
+    rmSync(grave, { recursive: true, force: true });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    rmSync(breaking, { recursive: true, force: true });
+  }
+}
+
+/** mkdir is atomic, so one caller wins; a lock whose owner died is moved aside first. */
 export function tryLock(dir: string, label: string, env: LockEnv): boolean {
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       mkdirSync(dir);
     } catch {
-      if (attempt === 1 || !isStale(dir, env)) return false;
-      const grave = `${dir}.stale-${env.pid}-${env.now()}`;
-      try {
-        renameSync(dir, grave);
-        rmSync(grave, { recursive: true, force: true });
-      } catch {
-        return false;
-      }
+      if (attempt === 1 || !isStale(dir, env) || !breakStale(dir, env)) return false;
       continue;
     }
     const started = env.processes.startOf(env.pid) ?? "";

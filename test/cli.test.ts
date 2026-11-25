@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { chmodSync, existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { dirname, join } from "node:path";
 import skill from "../skills/xcslot/SKILL.md" with { type: "text" };
 import { splitWrapped } from "../src/run.ts";
 import { addWorktree, cli, headOf, lastJson, makeRepo, scratch, sh, write } from "./helpers.ts";
@@ -8,7 +8,7 @@ import { addWorktree, cli, headOf, lastJson, makeRepo, scratch, sh, write } from
 interface Envelope {
   ok: boolean;
   data?: Record<string, unknown>;
-  error?: { code: string; next?: { command: string }[]; details?: Record<string, unknown> };
+  error?: { code: string; message: string; next?: { command: string }[]; details?: Record<string, unknown> };
 }
 const envelope = (text: string) => lastJson(text) as Envelope;
 
@@ -115,6 +115,104 @@ test("git variables exported by a hook point neither xcslot nor the wrapped comm
   expect(headOf(bystander)).toBe(before);
   expect(sh(bystander, "git", "status", "--porcelain")).toBe("");
 });
+
+const gitAs = (cwd: string, ...args: string[]) =>
+  sh(
+    cwd,
+    "git",
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.invalid",
+    "-c",
+    "commit.gpgsign=false",
+    ...args,
+  );
+
+test("a submodule's files are mirrored, and a slots folder deleted by hand is set up again", async () => {
+  const sub = makeRepo({ "S.swift": "from the submodule" }, "sub");
+  const repo = makeRepo({ "A.swift": "a" });
+  gitAs(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", sub, "Vendor/sub");
+  gitAs(repo, "commit", "-q", "-m", "submodule");
+  const worktree = addWorktree(repo, "task-1");
+  gitAs(worktree, "-c", "protocol.file.allow=always", "submodule", "update", "-q", "--init");
+  const home = scratch();
+
+  const built = await cli(["run", "--", "cat", "Vendor/sub/S.swift"], { cwd: worktree, home });
+  expect(built.stdout).toBe("from the submodule");
+  expect(built.code).toBe(0);
+
+  rmSync(join(home, "slots"), { recursive: true });
+  const again = await cli(["run", "--", "cat", "A.swift"], { cwd: worktree, home });
+  expect(again.stdout).toBe("a");
+  expect(again.code).toBe(0);
+});
+
+test("a bare repository's worktree builds, --from may be a symlink, and a repository needs a first commit", async () => {
+  const repo = makeRepo({ "ios/App.swift": "app" });
+  const bare = join(scratch(), "proj.git");
+  sh(repo, "git", "clone", "-q", "--bare", repo, bare);
+  const worktree = join(dirname(bare), "wt");
+  sh(bare, "git", "worktree", "add", "-q", worktree, "main");
+  const home = scratch();
+
+  const built = await cli(["run", "--", "cat", "ios/App.swift"], { cwd: worktree, home });
+  expect(built.stdout).toBe("app");
+  expect(built.code).toBe(0);
+
+  const link = join(scratch(), "link");
+  symlinkSync(worktree, link);
+  const viaLink = await cli(["run", "--from", join(link, "ios"), "--", "pwd"], { cwd: home, home });
+  expect(viaLink.stdout).toBe(`${join(worktree, "ios")}\n`);
+
+  const empty = join(scratch(), "empty");
+  mkdirSync(empty);
+  sh(empty, "git", "init", "-q");
+  const unborn = await cli(["run", "--", "true"], { cwd: empty, home });
+  expect(unborn.code).toBe(101);
+  expect(envelope(unborn.stderr).error?.message).toContain("has no commit yet");
+});
+
+// Clones products with `cp -c`, which only macOS has.
+test.skipIf(process.platform !== "darwin")(
+  "products land where the caller asked: a build setting, a used DerivedData, a --products-to checked first",
+  async () => {
+    const repo = makeRepo({ "A.swift": "a", ".gitignore": "out/\ndd/\n" });
+    const worktree = addWorktree(repo, "task-1");
+    const home = scratch();
+    const bin = join(scratch(), "bin");
+    write(bin, {
+      xcodebuild: [
+        "#!/bin/sh",
+        "echo ran",
+        "while [ $# -gt 0 ]; do",
+        '  case "$1" in',
+        '    -derivedDataPath) mkdir -p "$2/Build/Products/Debug" && echo built > "$2/Build/Products/Debug/App"; shift ;;',
+        '    SYMROOT=*) mkdir -p "${1#SYMROOT=}/Debug" && echo built > "${1#SYMROOT=}/Debug/App" ;;',
+        "  esac",
+        "  shift",
+        "done",
+      ].join("\n"),
+    });
+    chmodSync(join(bin, "xcodebuild"), 0o755);
+    const env = { PATH: `${bin}:${process.env.PATH}` };
+
+    const viaSetting = await cli(["xcodebuild", `SYMROOT=${worktree}/out`, "build"], { cwd: worktree, home, env });
+    expect(viaSetting.code).toBe(0);
+    expect(readFileSync(join(worktree, "out/Debug/App"), "utf8")).toBe("built\n");
+
+    write(worktree, { "dd/Build/Products/Old/Stale": "from a plain xcodebuild" });
+    const intoUsed = await cli(["xcodebuild", "-derivedDataPath", "dd", "build"], { cwd: worktree, home, env });
+    expect(intoUsed.code).toBe(0);
+    expect(readFileSync(join(worktree, "dd/Build/Products/Debug/App"), "utf8")).toBe("built\n");
+
+    write(worktree, { "taken/mine.txt": "keep" });
+    const refused = await cli(["xcodebuild", "--products-to", "taken", "build"], { cwd: worktree, home, env });
+    expect(refused.code).toBe(101);
+    expect(refused.stdout).toBe("");
+    expect(readFileSync(join(worktree, "taken/mine.txt"), "utf8")).toBe("keep");
+  },
+);
 
 test("when every slot is busy the command says who holds them and fails with slots_busy", async () => {
   const repo = makeRepo({ "A.swift": "a" });

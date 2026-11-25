@@ -5,6 +5,15 @@ const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&
 // macOS reaches /var, /tmp and /etc through /private, and tools print either form of the same path.
 export const spellings = (path: string) => [...new Set([path, path.replace(/^\/private(?=\/(var|tmp|etc)\/)/, "")])];
 
+export interface LineMapper {
+  (line: string): string;
+  /** Text a line must contain to be worth mapping; other lines pass through as bytes. */
+  readonly needles: readonly string[];
+}
+
+// Where a printed path can end before the line does; candidates are tried from the longest down.
+const PATH_END = /[\s)\]>,;]/;
+
 /**
  * Rewrites the slot's source paths in a command's output to the worktree's, so a diagnostic names the file the
  * agent edits. A path that exists only in the slot (a generated file) is left alone, so it still opens.
@@ -13,37 +22,66 @@ export function createPathMapper(
   slotSrc: string,
   worktree: string,
   exists: (path: string) => boolean = existsSync,
-): (line: string) => string {
+): LineMapper {
   const roots = spellings(slotSrc);
-  const pattern = new RegExp(`(?<![\\w/.-])(?:${roots.map(escapeRegExp).join("|")})((?:/[^\\s:'"]*)?)`, "g");
+  const root = `(?:${roots.map(escapeRegExp).join("|")})`;
+  // A path starts after a non-path character, an ANSI style or `file://`, and runs, spaces included, to a colon,
+  // a quote, a control character or the next root.
+  const pattern = new RegExp(
+    `(?:(?<=\\x1b\\[[0-9;]*m)|(?<=file://)|(?<![\\w/.-]))${root}((?:/(?:(?!${root})[^:'"\\x00-\\x1f])*)?)`,
+    "g",
+  );
   const known = new Map<string, boolean>();
-  return (line) => {
+  const present = (path: string) => {
+    let found = known.get(path);
+    if (found === undefined) {
+      found = exists(path);
+      known.set(path, found);
+    }
+    return found;
+  };
+  const map = (line: string) => {
     if (!roots.some((root) => line.includes(root))) return line;
     return line.replace(pattern, (whole, rest: string) => {
-      const mapped = worktree + rest;
-      let present = known.get(mapped);
-      if (present === undefined) {
-        present = exists(mapped);
-        known.set(mapped, present);
+      if (rest === "") return worktree;
+      for (let end = rest.length; end > 0; end--) {
+        if (end < rest.length && !PATH_END.test(rest[end] as string)) continue;
+        if (present(worktree + rest.slice(0, end))) return worktree + rest;
       }
-      return present ? mapped : whole;
+      return whole;
     });
   };
+  return Object.assign(map, { needles: roots });
 }
 
-/** Feeds a stream to `write` line by line, so a path split across two chunks is still rewritten. */
+const NEWLINE = 0x0a;
+
+/**
+ * Feeds a stream to `write` line by line, so a path split across two chunks is still rewritten. Only a line that
+ * mentions a needle is decoded and mapped; everything else passes through byte for byte.
+ */
 export async function pumpLines(
   stream: ReadableStream<Uint8Array>,
-  map: (line: string) => string,
-  write: (text: string) => void,
+  map: LineMapper | undefined,
+  write: (chunk: Uint8Array) => void,
 ): Promise<void> {
+  const needles = (map?.needles ?? []).map((needle) => Buffer.from(needle));
   const decoder = new TextDecoder();
-  let tail = "";
+  const mapLine = (line: Buffer): Buffer =>
+    map && needles.some((needle) => line.includes(needle)) ? Buffer.from(map(decoder.decode(line))) : line;
+  let tail = Buffer.alloc(0);
   for await (const chunk of stream) {
-    const text = tail + decoder.decode(chunk, { stream: true });
-    const cut = text.lastIndexOf("\n") + 1;
-    tail = text.slice(cut);
-    if (cut > 0) write(text.slice(0, cut).split("\n").map(map).join("\n"));
+    const text = Buffer.concat([tail, chunk]);
+    const cut = text.lastIndexOf(NEWLINE) + 1;
+    tail = text.subarray(cut);
+    if (cut === 0) continue;
+    const parts: Buffer[] = [];
+    for (let start = 0; start < cut;) {
+      const end = text.indexOf(NEWLINE, start);
+      parts.push(mapLine(text.subarray(start, end)), text.subarray(end, end + 1));
+      start = end + 1;
+    }
+    write(Buffer.concat(parts));
   }
-  if (tail) write(map(tail));
+  if (tail.length > 0) write(mapLine(tail));
 }

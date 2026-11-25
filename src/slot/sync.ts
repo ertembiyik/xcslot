@@ -5,41 +5,79 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
+  renameSync,
   rmSync,
   type Stats,
   symlinkSync,
   unlinkSync,
   utimesSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { failure, type XcslotError } from "../lib/errors.ts";
 import { git, gitList } from "../lib/proc.ts";
-import { err, ok, type Result } from "../lib/result.ts";
+import { err, ok, Result } from "../lib/result.ts";
 import type { FileStat, SlotState } from "./state.ts";
 
 // Ignored files pulled in by `includeIgnored` must never drag fetched or generated trees along.
 const NEVER_MIRRORED = /(^|\/)(\.build|DerivedData|Derived|Pods|node_modules|[^/]+\.xcodeproj|[^/]+\.xcworkspace)\//;
 
-const lstat = (path: string): Stats | undefined => lstatSync(path, { throwIfNoEntry: false });
-const statOf = (stats: Stats | undefined): FileStat | undefined => (stats ? [stats.size, stats.mtimeMs] : undefined);
+function lstat(path: string): Stats | undefined {
+  try {
+    return lstatSync(path, { throwIfNoEntry: false });
+  } catch (error) {
+    // A listed path under what is now a file: it is gone, like a missing one.
+    if ((error as NodeJS.ErrnoException).code === "ENOTDIR") return undefined;
+    throw error;
+  }
+}
+const statOf = (stats: Stats | undefined): FileStat | undefined =>
+  stats ? [stats.size, stats.mtimeMs, stats.mode] : undefined;
 const sameStat = (a: FileStat | undefined, b: FileStat | undefined) =>
-  a !== undefined && b !== undefined && a[0] === b[0] && a[1] === b[1];
+  a !== undefined && b !== undefined && a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+const sameMode = (a: Stats, b: Stats | undefined) => b !== undefined && (a.mode & 0o7777) === (b.mode & 0o7777);
 
 function sameContent(from: string, a: Stats, to: string): boolean {
   const b = lstat(to);
-  if (!b || a.isSymbolicLink() !== b.isSymbolicLink()) return false;
+  if (!b || a.isSymbolicLink() !== b.isSymbolicLink() || b.isDirectory()) return false;
   if (a.isSymbolicLink()) return readlinkSync(from) === readlinkSync(to);
-  if (a.size !== b.size || (a.mode & 0o111) !== (b.mode & 0o111)) return false;
-  return readFileSync(from).equals(readFileSync(to));
+  return a.size === b.size && readFileSync(from).equals(readFileSync(to));
+}
+
+/** The real directories on the way to `path` inside `root`, or undefined when a symlink or file is in the way. */
+function realParent(root: string, path: string, known: Set<string>): string | undefined {
+  let dir = root;
+  for (const part of dirname(path)
+    .split("/")
+    .filter((part) => part !== ".")) {
+    dir = join(dir, part);
+    if (known.has(dir)) continue;
+    if (!lstat(dir)?.isDirectory()) return undefined;
+    known.add(dir);
+  }
+  return dir;
+}
+
+/** Makes `path`'s parent a real directory inside `root`, replacing a symlink or file that stands in its place. */
+function makeParent(root: string, path: string): void {
+  let dir = root;
+  for (const part of dirname(path)
+    .split("/")
+    .filter((part) => part !== ".")) {
+    dir = join(dir, part);
+    const found = lstat(dir);
+    if (found?.isDirectory()) continue;
+    if (found) unlinkSync(dir);
+    mkdirSync(dir);
+  }
 }
 
 function copyEntry(from: string, stats: Stats, to: string): void {
-  mkdirSync(dirname(to), { recursive: true });
-  try {
-    unlinkSync(to);
-  } catch {}
+  const found = lstat(to);
+  if (found?.isDirectory()) rmSync(to, { recursive: true });
+  else if (found) unlinkSync(to);
   if (stats.isSymbolicLink()) {
     symlinkSync(readlinkSync(from), to);
     return;
@@ -53,7 +91,11 @@ function copyEntry(from: string, stats: Stats, to: string): void {
 
 /** Tracked and untracked-unignored files, plus the ignored ones the project names as build inputs. */
 export function listTree(top: string, includeIgnored: readonly string[]): Result<string[], XcslotError> {
-  return gitList(top, "ls-files", "-co", "--exclude-standard", "--deduplicate").andThen((visible) => {
+  // A checked-out submodule is listed by its files; on its own, a gitlink is a directory that mirrors as nothing.
+  const tracked = gitList(top, "ls-files", "-c", "--recurse-submodules");
+  const untracked = gitList(top, "ls-files", "-o", "--exclude-standard");
+  return Result.combine([tracked, untracked]).andThen(([cached, others]) => {
+    const visible = [...cached, ...others];
     if (includeIgnored.length === 0) return ok(entriesOnly(visible));
     return gitList(top, "ls-files", "-oi", "--exclude-standard", "--", ...includeIgnored).map((ignored) =>
       entriesOnly([...visible, ...ignored.filter((path) => !NEVER_MIRRORED.test(path))]),
@@ -95,30 +137,57 @@ export function syncInto(
   const listed = listTree(top, includeIgnored);
   if (listed.isErr()) return err(listed.error);
 
+  // git lists a tracked file deleted in the worktree; what is mirrored is what is on disk.
+  const sources = new Map<string, Stats>();
+  for (const path of listed.value) {
+    const source = lstat(join(top, path));
+    if (source && !source.isDirectory()) sources.set(path, source);
+  }
+  const byFoldedCase = new Map([...sources.keys()].map((path) => [path.toLowerCase(), path]));
+  const inSlot = gitList(slotSrc, "ls-files", "-co", "--exclude-standard", "--deduplicate");
+  if (inSlot.isErr()) return err(inSlot.error);
+
   const files: SlotState["files"] = {};
+  const realDirs = new Set<string>();
   let changed = 0;
+  let removed = 0;
   try {
-    for (const path of listed.value) {
+    // Removals first, so a path that turned from a file into a directory, or back, is free before the copy.
+    for (const path of new Set([...entriesOnly(inSlot.value), ...Object.keys(state.files)])) {
+      if (sources.has(path)) continue;
+      const parent = realParent(slotSrc, path, realDirs);
+      const found = parent && lstat(join(slotSrc, path));
+      if (!found || found.isDirectory()) continue;
+      // On a case-insensitive volume a case-only rename names the same file; rename it rather than delete both.
+      const twin = byFoldedCase.get(path.toLowerCase());
+      const twinFound = twin && lstat(join(slotSrc, twin));
+      if (twin && twinFound && twinFound.ino === found.ino && twinFound.dev === found.dev) {
+        if (readdirSync(dirname(join(slotSrc, twin))).includes(basename(twin))) continue;
+        renameSync(join(slotSrc, path), join(slotSrc, twin));
+      } else {
+        unlinkSync(join(slotSrc, path));
+      }
+      removed++;
+    }
+    for (const [path, source] of sources) {
       const from = join(top, path);
       const to = join(slotSrc, path);
-      const source = lstat(from);
-      if (!source || source.isDirectory()) continue;
       const before = state.files[path];
-      const untouched = before && sameStat(before.src, statOf(source)) && sameStat(before.dst, statOf(lstat(to)));
-      if (!untouched && !sameContent(from, source, to)) {
-        copyEntry(from, source, to);
-        changed++;
+      const inPlace = realParent(slotSrc, path, realDirs) !== undefined;
+      const untouched =
+        inPlace && before && sameStat(before.src, statOf(source)) && sameStat(before.dst, statOf(lstat(to)));
+      if (!untouched) {
+        if (!inPlace || !sameContent(from, source, to)) {
+          makeParent(slotSrc, path);
+          copyEntry(from, source, to);
+          changed++;
+        } else if (!source.isSymbolicLink() && !sameMode(source, lstat(to))) {
+          chmodSync(to, source.mode & 0o7777);
+          changed++;
+        }
       }
       const mirrored = statOf(lstat(to));
-      if (mirrored) files[path] = { src: [source.size, source.mtimeMs], dst: mirrored };
-    }
-    let removed = 0;
-    const inSlot = gitList(slotSrc, "ls-files", "-co", "--exclude-standard", "--deduplicate");
-    if (inSlot.isErr()) return err(inSlot.error);
-    for (const path of new Set([...entriesOnly(inSlot.value), ...Object.keys(state.files)])) {
-      if (path in files || !lstat(join(slotSrc, path))) continue;
-      rmSync(join(slotSrc, path), { force: true });
-      removed++;
+      if (mirrored) files[path] = { src: statOf(source) as FileStat, dst: mirrored };
     }
     state.files = files;
     state.head = head;
@@ -164,12 +233,13 @@ export function writeBack(slotSrc: string, state: SlotState): Result<WriteBack, 
         conflicts.push(path);
         continue;
       }
-      if (!inTree || !sameContent(join(slotSrc, path), inSlot, join(top, path))) {
+      if (!inTree || !sameContent(join(slotSrc, path), inSlot, join(top, path)) || !sameMode(inSlot, inTree)) {
+        mkdirSync(dirname(join(top, path)), { recursive: true });
         copyEntry(join(slotSrc, path), inSlot, join(top, path));
         returned.push(path);
       }
       const now = statOf(lstat(join(top, path)));
-      if (now) state.files[path] = { src: now, dst: [inSlot.size, inSlot.mtimeMs] };
+      if (now) state.files[path] = { src: now, dst: statOf(inSlot) as FileStat };
     }
     return ok({ returned, conflicts });
   } catch (error) {

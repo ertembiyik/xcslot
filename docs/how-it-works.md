@@ -38,7 +38,8 @@ A slot is a folder that never moves:
 
 1. **Takes a free slot.** Its own last slot first, then the one whose last tree is closest to yours, then the
    least recently used. If all are busy it says who holds them and waits.
-2. **Mirrors your worktree into `src`.** Tracked files and untracked files that git does not ignore. A file is
+2. **Mirrors your worktree into `src`.** Tracked files, the files of checked-out submodules, and untracked
+   files that git does not ignore. A file is
    rewritten only when its content differs, so every other file keeps its timestamp. A fresh worktree of a
    commit the slot already built changes nothing.
 3. **Prepares the project** when its inputs changed: `tuist install` and `tuist generate`, or the steps you
@@ -85,8 +86,9 @@ scripts that ask git for the commit see yours).
 - **Files the command wrote.** After the command, files in `src` that changed are copied to your worktree:
   recorded snapshots, an updated `Package.resolved`, linter fixes. A file you edited during the build is left
   alone and named in the output.
-- **Products**, when you pass `--products-to <dir>` or your own `-derivedDataPath`: an APFS clone, which is
-  instant and takes no disk until either side changes.
+- **Products**, when you pass `--products-to <dir>`, your own `-derivedDataPath` or a product setting such as
+  `SYMROOT` that points into the worktree: built in the slot, so the build stays warm, then an APFS clone, which
+  is instant and takes no disk until either side changes.
 
 ## Debugging a handed-out product
 
