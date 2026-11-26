@@ -40,20 +40,39 @@ first build drops from 85 s to 3.9 s; [benchmarks](docs/benchmarks.md) has the m
 
 ## Install
 
+### The CLI
+
 ```sh
 brew install ertembiyik/tap/xcslot
 ```
 
-macOS, Apple silicon and Intel. Then connect your coding agent. The easiest way is to paste this into it, in your
-repository:
+macOS, Apple silicon and Intel.
+
+### Your agent
+
+Then connect your agent so it builds through xcslot. In Claude Code (2.1.275 or later), the plugin adds the skill
+and a hook that sends every `xcodebuild` through xcslot:
+
+```text
+/plugin install xcslot --marketplace ertembiyik/xcslot
+```
+
+Codex, Cursor and other agents get the skill:
+
+```sh
+npx skills add ertembiyik/xcslot -g
+```
+
+### Or let your agent do both
+
+Paste this into it, in your repository:
 
 ```text
 Set up xcslot for this repository following https://raw.githubusercontent.com/ertembiyik/xcslot/main/docs/installation.md
 ```
 
-Or by hand: `/plugin install xcslot --marketplace ertembiyik/xcslot` in Claude Code (requires 2.1.275 or later),
-`npx skills add ertembiyik/xcslot -g` for other agents. [Installation](docs/installation.md) has the rest: older
-Claude Code, what the plugin's hook does, Codex, Cursor, apps that create worktrees, CI.
+[Installation](docs/installation.md) has the rest: older Claude Code, what the plugin's hook does, apps that create
+worktrees, CI.
 
 ## Quick start
 
