@@ -1,0 +1,19 @@
+{
+  "description": "Sends every xcodebuild the agent starts through xcslot: refuses one without xcslot and hands back the same command with xcslot in front.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(*xcodebuild*)",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/xcodebuild.sh",
+            "args": [],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "xcslot",
+  "owner": {
+    "name": "Ertem Biyik"
+  },
+  "description": "Warm Xcode build slots for parallel coding agents.",
+  "plugins": [
+    {
+      "name": "xcslot",
+      "source": "./",
+      "description": "Runs every xcodebuild your agent starts through xcslot, so a fresh worktree builds warm."
+    }
+  ]
+}
