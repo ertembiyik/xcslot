@@ -33,14 +33,18 @@ function hook(command: string, options: { cwd?: string; path?: string; env?: Rec
   return reason.match(/warm slot: ([\s\S]*)\nRun it unchanged/)?.[1];
 }
 
-test("the hook puts xcslot in front of xcodebuild wherever a command starts", () => {
-  expect(hook("xcodebuild -scheme App build")).toBe("xcslot xcodebuild -scheme App build");
-  expect(hook("cd ios && NSUnbufferedIO=YES xcodebuild -scheme App build | xcbeautify")).toBe(
-    "cd ios && NSUnbufferedIO=YES xcslot xcodebuild -scheme App build | xcbeautify",
-  );
-  expect(hook("set -o pipefail; xcrun xcodebuild test")).toBe("set -o pipefail; xcslot xcodebuild test");
-  expect(hook("xcodebuild clean\nxcodebuild build")).toBe("xcslot xcodebuild clean\nxcslot xcodebuild build");
-});
+// The hook reads its input with macOS's plutil; elsewhere it lets every command run.
+test.skipIf(process.platform !== "darwin")(
+  "the hook puts xcslot in front of xcodebuild wherever a command starts",
+  () => {
+    expect(hook("xcodebuild -scheme App build")).toBe("xcslot xcodebuild -scheme App build");
+    expect(hook("cd ios && NSUnbufferedIO=YES xcodebuild -scheme App build | xcbeautify")).toBe(
+      "cd ios && NSUnbufferedIO=YES xcslot xcodebuild -scheme App build | xcbeautify",
+    );
+    expect(hook("set -o pipefail; xcrun xcodebuild test")).toBe("set -o pipefail; xcslot xcodebuild test");
+    expect(hook("xcodebuild clean\nxcodebuild build")).toBe("xcslot xcodebuild clean\nxcslot xcodebuild build");
+  },
+);
 
 test("the hook leaves everything else alone", () => {
   expect(hook("xcslot xcodebuild build")).toBeUndefined();
