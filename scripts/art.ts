@@ -1,7 +1,14 @@
 // Renders the README's header, figures and chips from scripts/art/*.html with headless Chrome: `bun scripts/art.ts`.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+
+// Apple's license lets the bezel be drawn into mock-ups, not redistributed, so it stays out of git.
+if (!existsSync("scripts/art/bezel.png")) {
+  throw new Error(
+    "scripts/art/bezel.png is missing: copy 'MacBook Pro M5 14-inch Space Black.png' from Bezel-MacBook-Pro-M5.dmg on developer.apple.com/design/resources",
+  );
+}
 
 const CHROME = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const work = mkdtempSync(join(tmpdir(), "xcslot-art-"));
@@ -26,7 +33,7 @@ function shoot(html: string, out: string, width: number, height: number, scale: 
 }
 
 try {
-  shoot(resolve("scripts/art/header.html"), ".github/assets/header.png", 1600, 800, 1.5, false);
+  shoot(resolve("scripts/art/header.html"), ".github/assets/header.png", 1600, 976, 1.5, false);
   shoot(resolve("scripts/art/chart.html"), ".github/assets/chart.png", 1600, 900, 1.25, false);
   const dumped = Bun.spawnSync(
     [
