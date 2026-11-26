@@ -48,7 +48,7 @@ build with `xcslot xcodebuild`, not `xcslot run -- expo run:ios`:
     },
     {
       "name": "prebuild",
-      "run": ["bunx", "expo", "prebuild", "--platform", "ios", "--clean"],
+      "run": ["bunx", "expo", "prebuild", "--platform", "ios"],
       "inputs": ["package.json", "bun.lock", "app.config.ts", "plugins/**"],
       "outputs": ["ios"]
     }
