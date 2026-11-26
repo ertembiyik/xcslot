@@ -28,13 +28,13 @@ xcslot xcodebuild --products-to build/out -scheme App -configuration Debug build
                   └── xcslot's ────────┘ └── xcodebuild's ───────────────────┘
 ```
 
-| Option                          | Meaning                                                                                                   |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `--products-to <dir>`           | Clone the built products to a folder you own. They outlive the slot's next build and carry debug symbols. |
-| `--no-dsym`                     | Hand products out without debug symbols.                                                                  |
-| `--wait <seconds>`, `--no-wait` | How long to wait for a free slot. The default is an hour.                                                 |
-| `--slots <count>`               | Use up to this many slots for this run. Slots above the configured count are removed after a day unused.  |
-| `--from <dir>`                  | The worktree to build, instead of the current directory.                                                  |
+| Option                          | Meaning                                                                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `--products-to <dir>`           | Clone the built products to a folder you own. They outlive the slot's next build and carry debug symbols.               |
+| `--no-dsym`                     | Hand products out without debug symbols.                                                                                |
+| `--wait <seconds>`, `--no-wait` | How long to wait for a free slot. The default is an hour.                                                               |
+| `--slots <count>`               | Use up to this many slots for this run, and raise `maxConcurrent` to match. Extra slots are removed after a day unused. |
+| `--from <dir>`                  | The worktree to build, instead of the current directory.                                                                |
 
 ## What comes back
 
