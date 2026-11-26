@@ -44,39 +44,16 @@ first build drops from 85 s to 3.9 s; [benchmarks](docs/benchmarks.md) has the m
 brew install ertembiyik/tap/xcslot
 ```
 
-macOS, Apple silicon and Intel. Then give your coding agents the skill that teaches them to build through
-xcslot:
-
-```sh
-npx skills add ertembiyik/xcslot -g
-```
-
-In Claude Code, the plugin adds the skill and a hook that sends every `xcodebuild` through xcslot:
+macOS, Apple silicon and Intel. Then connect your coding agent. The easiest way is to paste this into it, in your
+repository:
 
 ```text
-/plugin install xcslot --marketplace ertembiyik/xcslot
+Set up xcslot for this repository following https://raw.githubusercontent.com/ertembiyik/xcslot/main/docs/installation.md
 ```
 
-That line needs Claude Code 2.1.275 or later; on an older one, run `claude plugin marketplace add ertembiyik/xcslot`
-and `claude plugin install xcslot@xcslot`. The hook, [hooks/xcodebuild.sh](hooks/xcodebuild.sh), runs before Bash
-commands that mention `xcodebuild`. When one starts `xcodebuild` without `xcslot`, it stops that command and tells the
-agent to run the same one with `xcslot` in front. It approves nothing and writes nothing.
-
-Or let your agent set everything up: paste this into it, in your repository.
-
-```text
-Set up xcslot for this repository following https://raw.githubusercontent.com/ertembiyik/xcslot/main/docs/agents.md
-```
-
-[Setting up your agents](docs/agents.md) also covers Codex, Cursor, apps that create worktrees and CI.
-
-Without the skills CLI, xcslot writes the skill into a skills folder itself:
-
-```sh
-xcslot skill install --dir ~/.claude/skills
-```
-
-`xcslot doctor` checks that everything it needs is in place.
+Or by hand: `/plugin install xcslot --marketplace ertembiyik/xcslot` in Claude Code (requires 2.1.275 or later),
+`npx skills add ertembiyik/xcslot -g` for other agents. [Installation](docs/installation.md) has the rest: older
+Claude Code, what the plugin's hook does, Codex, Cursor, apps that create worktrees, CI.
 
 ## Quick start
 
