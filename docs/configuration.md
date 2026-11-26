@@ -30,6 +30,42 @@ In the repository root, all keys optional:
   with secrets. The default is `["*.xcconfig"]`. Tracked files and untracked files that git does not ignore
   are always mirrored.
 
+### Expo and React Native
+
+A slot mirrors the git-tracked files, and an Expo project keeps what a build needs in ignored folders:
+`node_modules`, `ios/` with its `Pods`, and often a generated `.env`. Declare the steps that create them, and
+build with `xcslot xcodebuild`, not `xcslot run -- expo run:ios`:
+
+```json
+{
+  "sync": { "includeIgnored": ["*.xcconfig", ".env"] },
+  "prepare": [
+    {
+      "name": "install",
+      "run": ["bun", "install", "--frozen-lockfile"],
+      "inputs": ["package.json", "bun.lock", "patches/**"],
+      "outputs": ["node_modules"]
+    },
+    {
+      "name": "prebuild",
+      "run": ["bunx", "expo", "prebuild", "--platform", "ios"],
+      "inputs": ["package.json", "bun.lock", "app.config.ts", "plugins/**"],
+      "outputs": ["ios"]
+    }
+  ]
+}
+```
+
+```bash
+xcslot xcodebuild --products-to build/Products -workspace ios/App.xcworkspace -scheme App \
+  -configuration Debug -destination 'platform=iOS Simulator,id=<udid>' build
+xcrun simctl install <udid> build/Products/Debug-iphonesimulator/App.app
+xcrun simctl launch <udid> <bundle id>
+```
+
+Start Metro from the worktree itself. `inputs` come from `git ls-files`, so an ignored file such as `.env` cannot
+be an input: when it changes what `prebuild` produces, touch a tracked input to rerun the step.
+
 ## `~/.config/xcslot/config.json`, per machine
 
 ```json
