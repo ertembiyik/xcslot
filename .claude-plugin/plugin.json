@@ -1,0 +1,9 @@
+{
+  "name": "xcslot",
+  "description": "Runs every xcodebuild your agent starts through xcslot, so a fresh worktree builds warm, and teaches it the skill.",
+  "author": { "name": "Ertem Biyik" },
+  "homepage": "https://github.com/ertembiyik/xcslot",
+  "repository": "https://github.com/ertembiyik/xcslot",
+  "license": "MIT",
+  "keywords": ["xcode", "xcodebuild", "worktree", "build"]
+}

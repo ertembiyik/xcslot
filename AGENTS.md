@@ -49,6 +49,7 @@ Use bun for everything. `bun lint` joins `verify` when Bun 1.4.6 is stable; it i
 | A new error code                                   | Add it to `exitCodes` and `retryable`; the build fails until both have it. Add it to the table in `docs/reference.md`. |
 | An output shape in `schemas.ts`                    | `bun run docs`; a test fails while `docs/reference.md` is stale.                                                       |
 | `skills/xcslot/SKILL.md`                           | Every `bash` line must be a real command with real options; a test checks them against the catalog.                    |
+| `hooks/xcodebuild.sh`                              | `bun test test/hook.test.ts`, then try it in a real session with `claude --plugin-dir .`.                              |
 | A new command                                      | Wrap it in `describe(...)` with examples and errors, or it is missing from `xcslot commands`.                          |
 
 ## Learned the hard way

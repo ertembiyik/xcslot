@@ -51,6 +51,25 @@ xcslot:
 npx skills add ertembiyik/xcslot -g
 ```
 
+In Claude Code, the plugin adds the skill and a hook that sends every `xcodebuild` through xcslot:
+
+```text
+/plugin install xcslot --marketplace ertembiyik/xcslot
+```
+
+That line needs Claude Code 2.1.275 or later; on an older one, run `claude plugin marketplace add ertembiyik/xcslot`
+and `claude plugin install xcslot@xcslot`. The hook, [hooks/xcodebuild.sh](hooks/xcodebuild.sh), runs before Bash
+commands that mention `xcodebuild`. When one starts `xcodebuild` without `xcslot`, it stops that command and tells the
+agent to run the same one with `xcslot` in front. It approves nothing and writes nothing.
+
+Or let your agent set everything up: paste this into it, in your repository.
+
+```text
+Set up xcslot for this repository following https://raw.githubusercontent.com/ertembiyik/xcslot/main/docs/agents.md
+```
+
+[Setting up your agents](docs/agents.md) also covers Codex, Cursor, apps that create worktrees and CI.
+
 Without the skills CLI, xcslot writes the skill into a skills folder itself:
 
 ```sh
