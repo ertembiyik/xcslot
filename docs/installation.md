@@ -1,10 +1,10 @@
-# Setting up your agents
+# Installation
 
 xcslot helps only when the agent puts `xcslot` in front of its builds. This page sets that up, and it is written so
 an agent can follow it too: paste this into yours, in the repository you build.
 
 ```text
-Set up xcslot for this repository following https://raw.githubusercontent.com/ertembiyik/xcslot/main/docs/agents.md
+Set up xcslot for this repository following https://raw.githubusercontent.com/ertembiyik/xcslot/main/docs/installation.md
 ```
 
 ## Steps
@@ -58,6 +58,12 @@ Then tell the agent in the repository's `AGENTS.md`, which Codex and Cursor read
 
 Build through xcslot: `xcslot xcodebuild …` instead of `xcodebuild …`, and `xcslot run -- swift test` instead
 of `swift test`.
+```
+
+Without the skills CLI, xcslot writes the skill into an agent's skills folder itself:
+
+```sh
+xcslot skill install --dir ~/.claude/skills
 ```
 
 Apps that drive these agents, such as T3 Code and Conductor, pick up the same skill and `AGENTS.md`.
