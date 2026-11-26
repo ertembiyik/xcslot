@@ -79,7 +79,7 @@ be an input: when it changes what `prebuild` produces, touch a tracked input to 
 | `waitSeconds`   | 3600                         | How long a command waits for a slot before it fails. |
 | `root`          | `~/Library/Developer/xcslot` | Where slots live.                                    |
 
-`--slots <count>` raises the slot count for one run. `XCSLOT_HOME` overrides `root`, and `XCSLOT_CONFIG` names
+`--slots <count>` raises the slot count for one run, and `maxConcurrent` with it. `XCSLOT_HOME` overrides `root`, and `XCSLOT_CONFIG` names
 another config file.
 
 ## Disk

@@ -206,7 +206,9 @@ export async function runInSlot(
       if (usable.isErr()) return err(usable.error);
     }
 
-    const permit = await acquirePermit(wait, root, config.value.maxConcurrent, label);
+    // Slots asked for on the command line must be able to build at once, or the extra ones only wait.
+    const cap = Math.max(config.value.maxConcurrent, options.slots ?? 0);
+    const permit = await acquirePermit(wait, root, cap, label);
     if (permit.isErr()) return err(permit.error);
     const started = deps.now();
     const ran = await spawnThrough(deps, {

@@ -88,7 +88,7 @@ export function createProgram(deps: Deps, state: RunState): Command {
         .option("--no-wait", "fail at once with slots_busy when no slot is free")
         .option(
           "--slots <count>",
-          "use up to this many slots for this run; extra ones are removed after a day unused",
+          "use up to this many slots for this run, and let as many builds run at once; extra slots are removed after a day unused",
           wholeNumber("--slots"),
         )
         .option("--from <dir>", "the worktree to build, instead of the current directory")

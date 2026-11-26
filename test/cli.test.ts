@@ -323,6 +323,24 @@ test("when every slot is busy the command says who holds them and fails with slo
   expect((await holder).code).toBe(0);
 });
 
+test("a build past maxConcurrent waits for a permit, unless --slots asks for that many at once", async () => {
+  const repo = makeRepo({ "A.swift": "a" });
+  const home = scratch();
+  write(home, { "config.json": JSON.stringify({ slots: 2, maxConcurrent: 1 }) });
+  const holder = cli(["run", "--", "sleep", "3"], { cwd: addWorktree(repo, "one"), home });
+  await new Promise((resolve) => setTimeout(resolve, 1200));
+
+  const capped = await cli(["run", "--no-wait", "--", "true"], { cwd: addWorktree(repo, "two"), home });
+  expect(capped.code).toBe(110);
+  expect(envelope(capped.stderr).error?.message).toContain("maxConcurrent: 1");
+  const asked = await cli(["run", "--no-wait", "--slots", "2", "--", "true"], {
+    cwd: addWorktree(repo, "three"),
+    home,
+  });
+  expect(asked.code).toBe(0);
+  expect((await holder).code).toBe(0);
+});
+
 test("removing slots needs --yes and reports what it removed", async () => {
   const repo = makeRepo({ "A.swift": "a" });
   const home = scratch();

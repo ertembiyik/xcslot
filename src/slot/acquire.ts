@@ -97,7 +97,7 @@ export function acquirePermit(
   const env = lockEnv(wait.deps);
   return waitFor(
     wait,
-    "build permit",
+    `build permit (maxConcurrent: ${max})`,
     () => tryPermit(permitsDir(root), max, label, env),
     () => permitHolders(permitsDir(root), max, env).map((owner) => describe("permit", owner, wait.deps.now())),
   );
