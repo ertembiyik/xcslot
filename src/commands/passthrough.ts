@@ -1,6 +1,6 @@
-import { createWriteStream, existsSync, mkdirSync, realpathSync } from "node:fs";
+import { createWriteStream, existsSync, lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { constants } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { prepareSteps } from "../adapters/steps.ts";
 import type { Deps } from "../context.ts";
 import { loadProjectConfig, loadUserConfig } from "../lib/config.ts";
@@ -88,6 +88,27 @@ const seconds = (ms: number) => (ms / 1000).toFixed(1);
 
 const PATH_OPTIONS = new Set(["-project", "-workspace", "--package-path"]);
 
+/** Resolve symlinks in the existing prefix, even if the generated target at the end does not exist yet. */
+function physicalPath(path: string): string | undefined {
+  const missing: string[] = [];
+  for (let prefix = path; ; prefix = dirname(prefix)) {
+    try {
+      return join(realpathSync.native(prefix), ...missing.reverse());
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+      // Do not treat a dangling link or an unresolved ".." as an ordinary missing component.
+      const leaf = basename(prefix);
+      if (leaf === ".." || dirname(prefix) === prefix) return undefined;
+      try {
+        if (lstatSync(prefix, { throwIfNoEntry: false })) return undefined;
+      } catch {
+        return undefined;
+      }
+      missing.push(leaf);
+    }
+  }
+}
+
 /** The invocation directory and path-like arguments, relative to the repository root. */
 function touchedPaths(from: string, worktree: string, args: readonly string[]): [string, ...string[]] {
   const cwd = relative(worktree, from) || ".";
@@ -99,8 +120,12 @@ function touchedPaths(from: string, worktree: string, args: readonly string[]): 
     const value = assignment?.[2] ?? arg;
     const pathOption = pathValue || PATH_OPTIONS.has(assignment?.[1] ?? "");
     if (pathOption || value === "." || value === ".." || (!value.startsWith("-") && value.includes("/"))) {
-      // Keep paths outside the worktree too: they disqualify a package-local invocation.
-      return [relative(worktree, resolve(from, value)) || "."];
+      // Keep the lexical path and, when a link redirects it, the effective path. Do not normalize
+      // away ".." before following the link, or a different directory can look package-local.
+      const lexical = relative(worktree, resolve(from, value)) || ".";
+      const physical = physicalPath(isAbsolute(value) ? value : `${from}/${value}`);
+      const effective = physical === undefined ? ".." : relative(worktree, physical) || ".";
+      return lexical === effective ? [lexical] : [lexical, effective];
     }
     return [];
   });

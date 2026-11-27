@@ -14,7 +14,9 @@ xcslot needs no configuration. Two optional files change its defaults.
 For a standalone Swift package inside a Tuist repository, run `xcslot run -- swift test` or `xcslot xcodebuild`
 from the package directory (or a subdirectory). If the nearest manifest is that package's `Package.swift`
 and the command's path arguments stay in the package, xcslot skips automatic Tuist installation and generation.
-Tuist's own `Tuist/Package.swift` does not count as a standalone package. Custom `prepare` steps still run.
+A path that leaves the package through a symlink or names an Xcode project or workspace under a nearer Tuist
+manifest still uses the normal Tuist steps. Tuist's own `Tuist/Package.swift` does not count as a standalone
+package. Custom `prepare` steps still run.
 
 ## `.xcslot.json`, per repository
 

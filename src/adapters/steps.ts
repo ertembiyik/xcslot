@@ -22,9 +22,8 @@ function tuistCommand(slotSrc: string, projectDir: string): string[] {
 /** Whether `path` is `dir` or lies under it; both are relative to the repository root, which is ".". */
 const within = (path: string, dir: string) => dir === "." || path === dir || path.startsWith(`${dir}/`);
 
-/** Walk up from the command directory. Tuist's own package is not a standalone Swift package. */
-function standalonePackage(slotSrc: string, tracked: readonly string[], cwd: string): string | undefined {
-  const paths = new Set(tracked);
+/** Walk up from a repository directory. Tuist's own package is not a standalone Swift package. */
+function standalonePackage(slotSrc: string, paths: ReadonlySet<string>, cwd: string): string | undefined {
   const hasManifest = (path: string) => paths.has(path) && existsSync(join(slotSrc, path));
   for (let dir = cwd; ; dir = dirname(dir)) {
     if (TUIST_ROOT_MANIFESTS.some((name) => hasManifest(join(dir, name)))) return undefined;
@@ -50,8 +49,20 @@ function tuistSteps(
   const rel = dirname(manifest);
   // A command run elsewhere in the repository, such as `swift build` in a standalone package, needs no project.
   if (![cwd, ...named].some((path) => within(path, rel) || within(rel, path))) return [];
-  const standalone = standalonePackage(slotSrc, tracked, cwd);
-  if (standalone !== undefined && standalone !== "." && named.every((path) => within(path, standalone))) return [];
+  const paths = new Set(tracked);
+  const standalone = standalonePackage(slotSrc, paths, cwd);
+  if (
+    standalone !== undefined &&
+    standalone !== "." &&
+    named.every(
+      (path) =>
+        within(path, standalone) &&
+        // An explicit project inside the package can belong to a closer Tuist manifest.
+        (!/\.(xcodeproj|xcworkspace)(\/|$)/i.test(path) ||
+          standalonePackage(slotSrc, paths, dirname(path)) !== undefined),
+    )
+  )
+    return [];
   const projectDir = join(slotSrc, rel);
   const inProject = tracked.filter((path) => rel === "." || path.startsWith(`${rel}/`));
   const tuist = tuistCommand(slotSrc, projectDir);

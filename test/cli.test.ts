@@ -491,3 +491,50 @@ test("a deleted package manifest does not stop Tuist preparation", async () => {
   expect(result.code).toBe(0);
   expect(result.stderr).toContain("xcslot: tuist generate");
 });
+
+test("a named Xcode target beneath a nearer Tuist manifest keeps preparation", async () => {
+  const { cwd, env } = mixedTuistRepo();
+  for (const target of [
+    ["-project", "App/App.xcodeproj"],
+    ["-workspace", "App/App.xcworkspace"],
+  ]) {
+    const result = await cli(["xcodebuild", ...target, "build"], { cwd, home: scratch(), env });
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain("xcslot: tuist generate");
+  }
+});
+
+test("a symlink that leads outside a standalone package keeps Tuist preparation for a not-yet-generated target", async () => {
+  const { repo, cwd, home, env } = mixedTuistRepo();
+  write(repo, { "App/Project.swift": "" });
+  symlinkSync("../../App", join(cwd, "AppLink"));
+  expect(existsSync(join(cwd, "AppLink/App.xcodeproj"))).toBe(false);
+  const result = await cli(["xcodebuild", "-project", "AppLink/App.xcodeproj", "build"], { cwd, home, env });
+  expect(result.code).toBe(0);
+  expect(result.stderr).toContain("xcslot: tuist generate");
+});
+
+test("a package-local symlink does not trigger unnecessary Tuist preparation", async () => {
+  const { cwd, home, env, calls } = mixedTuistRepo();
+  symlinkSync("Sources", join(cwd, "SourceLink"));
+  const result = await cli(["run", "--", "cat", "SourceLink/Example.swift"], { cwd, home, env });
+  expect(result.code).toBe(0);
+  expect(existsSync(calls)).toBe(false);
+});
+
+test("the parent of a symlink destination is checked before deciding to skip Tuist", async () => {
+  const { repo, cwd, home, env } = mixedTuistRepo();
+  write(repo, { "App/Deep/source.swift": "" });
+  symlinkSync("../../App/Deep", join(cwd, "AppLink"));
+  const result = await cli(["xcodebuild", "-project", "AppLink/../App.xcodeproj", "build"], { cwd, home, env });
+  expect(result.code).toBe(0);
+  expect(result.stderr).toContain("xcslot: tuist generate");
+});
+
+test("an explicit Xcode project without a nearer Tuist manifest still skips Tuist", async () => {
+  const { cwd, home, env, calls } = mixedTuistRepo();
+  write(cwd, { "Sources/Example.xcodeproj/project.pbxproj": "" });
+  const result = await cli(["xcodebuild", "-project", "Sources/Example.xcodeproj", "build"], { cwd, home, env });
+  expect(result.code).toBe(0);
+  expect(existsSync(calls)).toBe(false);
+});
