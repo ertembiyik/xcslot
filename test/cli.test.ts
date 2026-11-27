@@ -558,3 +558,42 @@ test("a package-local project through a symlink with trailing slashes still skip
   expect(result.code).toBe(0);
   expect(existsSync(calls)).toBe(false);
 });
+
+test("a bare dangling symlink to a Tuist output keeps preparation", async () => {
+  const { cwd, home, repo, env } = mixedTuistRepo();
+  symlinkSync("../../Derived/Generated.swift", join(cwd, "Generated.swift"));
+  write(repo, {
+    "bin/tuist":
+      '#!/bin/sh\nif [ "$1" = generate ]; then mkdir -p Derived; echo generated > Derived/Generated.swift; fi\n',
+  });
+  const result = await cli(["run", "--", "cat", "Generated.swift"], { cwd, home, env });
+  expect(result.code, result.stderr).toBe(0);
+  expect(result.stdout).toBe("generated\n");
+  expect(result.stderr).toContain("xcslot: tuist generate");
+});
+
+test("a bare symlink that stays inside a standalone package still skips Tuist", async () => {
+  const { cwd, home, env, calls } = mixedTuistRepo();
+  write(cwd, { "Sources/Example.swift": "package-local\n" });
+  symlinkSync("Sources/Example.swift", join(cwd, "Local.swift"));
+  const result = await cli(["run", "--", "cat", "Local.swift"], { cwd, home, env });
+  expect(result.code).toBe(0);
+  expect(result.stdout).toBe("package-local\n");
+  expect(existsSync(calls)).toBe(false);
+});
+
+test("non-path xcodebuild arguments are not mistaken for bare symlink operands", async () => {
+  const { cwd, home, env, calls } = mixedTuistRepo();
+  symlinkSync("../../Derived/Generated.swift", join(cwd, "Example-Package"));
+  const result = await cli(["xcodebuild", "-scheme", "Example-Package", "test"], { cwd, home, env });
+  expect(result.code).toBe(0);
+  expect(existsSync(calls)).toBe(false);
+});
+
+test("a PATH-search command is not mistaken for a same-named link in the package", async () => {
+  const { cwd, home, env, calls } = mixedTuistRepo();
+  symlinkSync("../../Derived/Generated.swift", join(cwd, "true"));
+  const result = await cli(["run", "--", "true"], { cwd, home, env });
+  expect(result.code).toBe(0);
+  expect(existsSync(calls)).toBe(false);
+});

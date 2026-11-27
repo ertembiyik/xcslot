@@ -111,8 +111,21 @@ function physicalPath(path: string): string | undefined {
   }
 }
 
+function isSymlink(path: string): boolean {
+  try {
+    return lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ?? false;
+  } catch {
+    return false;
+  }
+}
+
 /** The invocation directory and path-like arguments, relative to the repository root. */
-function touchedPaths(from: string, worktree: string, args: readonly string[]): [string, ...string[]] {
+function touchedPaths(
+  from: string,
+  worktree: string,
+  wrapped: Wrapped,
+  args: readonly string[],
+): [string, ...string[]] {
   const cwd = relative(worktree, from) || ".";
   // A directory that cannot be placed counts as the root, so the project's steps still run.
   if (cwd === ".." || cwd.startsWith("../") || isAbsolute(cwd)) return ["."];
@@ -121,7 +134,12 @@ function touchedPaths(from: string, worktree: string, args: readonly string[]): 
     const assignment = pathValue ? undefined : arg.match(/^(-{1,2}[\w-]+|[A-Za-z_]\w*)=(.*)$/s);
     const value = assignment?.[2] ?? arg;
     const pathOption = pathValue || PATH_OPTIONS.has(assignment?.[1] ?? "");
-    if (pathOption || value === "." || value === ".." || (!value.startsWith("-") && value.includes("/"))) {
+    // An arbitrary command can read a bare symlink, even if its destination hasn't been generated yet.
+    // The executable itself is looked up on PATH; xcodebuild already identifies its explicit path options.
+    const pathLike = value === "." || value === ".." || (!value.startsWith("-") && value.includes("/"));
+    const bareLink =
+      !pathLike && wrapped === "run" && i > 0 && !assignment && !value.startsWith("-") && isSymlink(join(from, value));
+    if (pathOption || pathLike || bareLink) {
       // Keep the lexical path and, when a link redirects it, the effective path. Do not normalize
       // away ".." before following the link, or a different directory can look package-local.
       const lexical = relative(worktree, resolve(from, value)) || ".";
@@ -202,7 +220,7 @@ export async function runInSlot(
     writeState(slot.state, state);
 
     const map = createPathMapper(slot.src, repo.value.worktree);
-    const steps = prepareSteps(slot.src, project.value, touchedPaths(from, repo.value.worktree, args));
+    const steps = prepareSteps(slot.src, project.value, touchedPaths(from, repo.value.worktree, wrapped, args));
     if (steps.isErr()) return err(steps.error);
     let stepFailure: XcslotError | undefined;
     const prepared = await prepare(
