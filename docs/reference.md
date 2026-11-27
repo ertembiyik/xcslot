@@ -7,6 +7,7 @@ for an agent, with examples.
 
 | Command                                             | What it does                                                                |
 | --------------------------------------------------- | --------------------------------------------------------------------------- |
+| `xcslot build <xcodebuild args>`                    | Automatically selects MCP or xcodebuild for a warm build.                   |
 | `xcslot xcodebuild <xcodebuild args>`               | Runs `xcodebuild` in a warm slot. Builds, tests and archives.               |
 | `xcslot mcp-build <project> <scheme> [destination]` | Builds a scheme with Apple's headless Xcode service in the slot.            |
 | `xcslot run -- <command>`                           | Runs any other build command in the slot's copy of the current directory.   |
@@ -19,7 +20,7 @@ for an agent, with examples.
 | `xcslot skill`                                      | Prints the skill that teaches an agent to build through xcslot.             |
 | `xcslot skill install --dir <folder>`               | Writes the skill into a skills folder as `xcslot/SKILL.md`.                 |
 
-## Options of `xcodebuild` and `run`
+## Options of `build`, `xcodebuild` and `run`
 
 `xcslot`'s own options are double-dashed and come right after the command word. Everything from the first other
 word goes to the wrapped command untouched.
@@ -37,6 +38,32 @@ xcslot xcodebuild --products-to build/out -scheme App -configuration Debug build
 | `--slots <count>`               | Use up to this many slots for this run, and raise `maxConcurrent` to match. Extra slots are removed after a day unused. |
 | `--from <dir>`                  | The worktree to build, instead of the current directory.                                                                |
 
+## Automatic builds
+
+```sh
+xcslot build -project App.xcodeproj -scheme App
+xcslot build --engine xcodebuild -project App.xcodeproj -scheme App
+```
+
+The default engine is `auto`. Simple builds with a single known project or workspace, a scheme, and a
+generic iOS Simulator destination can use MCP. With no destination, these simple requests default to
+the generic iOS Simulator in either engine. All other arguments, including test and archive actions,
+explicit build configurations, build settings, custom output paths and specific device destinations,
+go to xcodebuild unchanged.
+
+`--engine auto|mcp|xcodebuild` overrides the machine's `buildEngine` configuration for this invocation.
+Forced MCP reports an unsupported or unavailable operation as an error. In auto mode a setup failure
+can fall back once before the build is submitted and only after the slot workspace is closed. Compiler
+failures, uncertain build outcomes, export failures, and cancellation never trigger a second build.
+Xcode can retain a stale filesystem-synchronized group even after a workspace close. After a slot has
+used MCP, requests with different file membership, project or package definitions, or a different
+workspace use the CLI in that slot. The original membership can still use the warm MCP cache.
+Generated-project preparation also uses the CLI. Forced MCP reports these cases before building.
+A fresh slot can start with any project membership.
+The selected engine and any fallback reason are printed on stderr. The MCP service must already be
+enabled and authorized by the user. Its build phases use its own environment, so use the CLI engine
+for builds that rely on shell-specific environment variables or native output filters.
+
 ## Headless Xcode builds
 
 On a Mac with Xcode 27's headless service enabled and access to the slots folder, pass the path to the
@@ -51,8 +78,7 @@ xcslot mcp-build App.xcworkspace "Demo App" "My Mac"
 
 The slot stays locked through build and product export. An identical checkout can reuse the open workspace.
 Before changing its inputs, using a different runner, or removing the slot, xcslot closes the workspace.
-Closing can save IDE metadata, so xcslot mirrors the caller's inputs again after a close. Generated-project
-preparation and failed builds leave the workspace closed. Build data stays warm at the same path for the project,
+Closing can save IDE metadata, so xcslot mirrors the caller's inputs again after a close. Failed builds leave the workspace closed. The input compatibility checks described above also apply to this explicit command. Build data stays warm at the same path for the project,
 scheme and destination. The command prints diagnostics and Xcode's full build-log path. Build phases run in the headless service's environment.
 
 In this mode Xcode's changes to the slot's source tree, including project settings and string catalogs, stay

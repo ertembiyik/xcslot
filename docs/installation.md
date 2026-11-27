@@ -30,7 +30,7 @@ Set up xcslot for this repository following https://raw.githubusercontent.com/er
 ## Claude Code and the Claude app
 
 The plugin adds the skill and a hook that catches an `xcodebuild` the agent starts without `xcslot`: it stops that
-command and hands the agent the same one with `xcslot` in front, which the agent runs instead. In Claude Code:
+command and hands the agent a slotted build. Standalone commands with an explicit generic iOS Simulator destination use the automatic builder. Compound commands and native output filters keep the CLI passthrough. In Claude Code:
 
 ```text
 /plugin install xcslot --marketplace ertembiyik/xcslot
@@ -56,8 +56,7 @@ Then tell the agent in the repository's `AGENTS.md`, which Codex and Cursor read
 ```md
 ## Building
 
-Build through xcslot: `xcslot xcodebuild …` instead of `xcodebuild …`, and `xcslot run -- swift test` instead
-of `swift test`.
+Build through xcslot: `xcslot build …` selects an engine automatically. Use `xcslot xcodebuild …` for native output filters and scripts, and `xcslot run -- swift test` for Swift package tests.
 ```
 
 Without the skills CLI, xcslot writes the skill into an agent's skills folder itself:
@@ -75,7 +74,7 @@ start one in the app's setup script, the script it runs after creating a worktre
 script):
 
 ```sh
-xcslot xcodebuild -scheme App -destination 'generic/platform=iOS Simulator' build > /dev/null 2>&1 &
+xcslot build -scheme App -destination 'generic/platform=iOS Simulator' build > /dev/null 2>&1 &
 ```
 
 There is nothing to clean up when the app archives a worktree: slots belong to the repository, not to a

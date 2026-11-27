@@ -24,6 +24,21 @@ rewritten=$(printf '%s\n' "$command" | sed -E \
   's/(^|[;&|(])([[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*)(xcrun[[:space:]]+)?xcodebuild([[:space:]]|$)/\1\2xcslot xcodebuild\5/g')
 [ "$rewritten" = "$command" ] && exit 0
 
+# Standalone commands that explicitly request the generic iOS Simulator can use the
+# automatic builder. Keep pipelines, compound commands and other destinations on the
+# native passthrough, whose stdout and defaults those callers may depend on.
+case "$command" in
+  *[\;\&\|\<\>\$\`]*|*'
+'*) ;;
+  "xcodebuild "*|"xcrun xcodebuild "*)
+    case "$command" in
+      *"-destination 'generic/platform=iOS Simulator'"*|*'-destination "generic/platform=iOS Simulator"'*)
+        rewritten=$(printf '%s\n' "$rewritten" | sed 's/^xcslot xcodebuild /xcslot build /')
+        ;;
+    esac
+    ;;
+esac
+
 reason="Run this build through xcslot, which builds this worktree in a warm slot: $rewritten
 Run it unchanged otherwise. Set XCSLOT_HOOK=0 to turn this off."
 # Fails open: if the reply cannot be built, the command runs as it was.

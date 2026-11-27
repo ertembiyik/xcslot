@@ -106,7 +106,10 @@ def open_workspace(bridge, project):
     return opened
 
 
+build_started = False
+
 def run_build(bridge, opened, scheme, destination):
+    global build_started
     target = dict(workspaceIdentifier=opened["workspaceIdentifier"])
     if opened.get("activeScheme") != scheme:
         selected = bridge.call("XcodeSwitchScheme", {**target, "schemeName": scheme})
@@ -125,6 +128,7 @@ def run_build(bridge, opened, scheme, destination):
         chosen = bridge.call("XcodeSwitchRunDestination", {**target, "displayTitle": title})
         if chosen.get("activeDestinationDisplayTitle") != title:
             raise ValueError("Xcode did not select destination " + title)
+    build_started = True
     result = bridge.call("BuildProject", target, timeout=3600)
     print(result["buildResult"])
     for error in result["errors"]:
@@ -152,6 +156,15 @@ def close_workspace(slot, marker):
             with connect(developer) as bridge:
                 opened = open_workspace(bridge, project)
                 bridge.call("XcodeCloseWorkspace", dict(workspaceIdentifier=opened["workspaceIdentifier"]))
+            # The tool can acknowledge closing before the workspace registry has removed it.
+            deadline = time.monotonic() + 5
+            while True:
+                current = status(developer)
+                if not current.get("running") or not any(Path(w["path"]).resolve() == project for w in current["openWorkspaces"]):
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Xcode did not close the slot workspace")
+                time.sleep(0.05)
     if project.exists():
         settings = workspace_settings_path(project)
         if record["original"] is None:
@@ -203,6 +216,11 @@ def main():
             output("xcrun", "mcp-server", "open", "--format", "json", str(project))
         with connect(developer) as bridge:
             opened = open_workspace(bridge, project)
+            required = {"BuildProject", "XcodeOpenWorkspace", "XcodeCloseWorkspace",
+                        "XcodeSwitchScheme", "XcodeListRunDestinations", "XcodeSwitchRunDestination"}
+            provided = {tool["name"] for tool in bridge.request("tools/list", {})["tools"]}
+            if not required.issubset(provided):
+                raise RuntimeError("Xcode MCP is missing required headless build tools")
             code = run_build(bridge, opened, sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)
         if code == 0 and os.environ.get("XCSLOT_MCP_KEEP_OPEN") == "1":
             record["ready"] = True
@@ -222,5 +240,6 @@ for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
 try:
     sys.exit(main())
 except (OSError, ValueError, RuntimeError, KeyError, ElementTree.ParseError, subprocess.SubprocessError) as error:
-    print("Headless Xcode build failed: " + str(error), file=sys.stderr)
-    sys.exit(65)
+    print("xcslot: headless Xcode: " + str(error), file=sys.stderr)
+    # Only a failure before the build action was sent can trigger a different runner.
+    sys.exit(79 if build_started else 78)

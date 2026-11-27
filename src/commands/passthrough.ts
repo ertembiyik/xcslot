@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, mkdirSync, realpathSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, realpathSync, readFileSync, writeFileSync } from "node:fs";
 import { constants } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import {
@@ -8,6 +8,7 @@ import {
   headlessMarker,
   headlessProductData,
   reusableWorkspace,
+  nestedHeadlessData,
 } from "../adapters/headless.ts";
 
 import { prepareSteps } from "../adapters/steps.ts";
@@ -133,12 +134,12 @@ export async function runInSlot(
   const command = wrapped === "run" ? [...args] : [wrapped, ...args];
 
   // Inside a slot already (a script run by `xcslot run` that builds): use that slot, take no second one.
-  const outerDerivedData = deps.env.XCSLOT_DERIVED_DATA;
+  const outerDerivedData = deps.env.XCSLOT_DERIVED_DATA ?? nestedHeadlessData(deps, from);
   if (outerDerivedData !== undefined) {
     if (headless) return err(failure("usage_error", "Start mcp-build from the caller's worktree"));
     const nested = wrapped === "xcodebuild" && !args.includes("-derivedDataPath") && !needsNoProject(args);
     const argv = nested ? [...command, "-derivedDataPath", outerDerivedData] : command;
-    return spawnThrough(deps, { argv, cwd: from, stdoutTo: "stdout" });
+    return spawnThrough(deps, { argv, cwd: from, env: { XCSLOT_DERIVED_DATA: outerDerivedData }, stdoutTo: "stdout" });
   }
   if (wrapped === "xcodebuild" && needsNoProject(args)) {
     return spawnThrough(deps, { argv: command, cwd: from, stdoutTo: "stdout" });
@@ -152,7 +153,11 @@ export async function runInSlot(
   // Normalize absolute/relative caller paths before the command moves to the slot.
   const workspace = headless ? relative(repo.value.worktree, resolve(from, args[0] as string)) : undefined;
   if (workspace !== undefined && (workspace.startsWith("../") || !/\.(xcodeproj|xcworkspace)$/.test(workspace))) {
-    return err(failure("usage_error", "The project or workspace must be inside the caller's worktree"));
+    return err(
+      failure("usage_error", "The project or workspace must be inside the caller's worktree", {
+        details: { beforeBuild: true },
+      }),
+    );
   }
   const project = loadProjectConfig(repo.value.worktree);
   if (project.isErr()) return err(project.error);
@@ -236,6 +241,42 @@ export async function runInSlot(
     writeState(slot.state, state);
     if (prepared.isErr()) return err(stepFailure ?? prepared.error);
 
+    if (headless) {
+      // A reopened IDE can still retain an old filesystem-synchronized group. Once
+      // Xcode has opened a slot, do not ask it to build a different file membership
+      // or project definition in that slot. Keep the initial membership as a receipt.
+      const paths = Object.keys(state.files).sort();
+      const hash = createHash("sha256").update(JSON.stringify([workspace, paths]));
+      for (const path of paths.filter((path) =>
+        /\.(xcodeproj|xcworkspace)\/|(^|\/)Package\.(swift|resolved)$|\.xcconfig$/.test(path),
+      )) {
+        hash
+          .update(path)
+          .update("\0")
+          .update(readFileSync(join(slot.src, path)));
+      }
+      const signature = hash.digest("hex");
+      const receipt = join(slot.dir, "headless-inputs");
+      const changed = existsSync(receipt)
+        ? readFileSync(receipt, "utf8") !== signature
+        : existsSync(join(slot.dir, "mcp"));
+      if (changed || steps.value.length) {
+        // A caller can safely use the CLI after the workspace has been closed.
+        const closed = closeHeadlessWorkspace(slot);
+        if (closed.isErr()) return err(closed.error);
+        return err(
+          failure(
+            "usage_error",
+            changed ? "MCP workspace inputs changed" : "MCP cannot verify generated project inputs",
+            {
+              hint: "Use xcodebuild for this slot's changed project or source membership",
+              details: { beforeBuild: true },
+            },
+          ),
+        );
+      }
+      if (!existsSync(receipt)) writeFileSync(receipt, signature);
+    }
     const places = { cwd: from, worktree: repo.value.worktree, slotSrc: slot.src, slotDerivedData: slot.derivedData };
     const rewritten = wrapped === "xcodebuild" ? rewriteArgs(args, places) : undefined;
     const cwd = rewritten?.cwd ?? join(slot.src, relative(repo.value.worktree, from));
@@ -285,6 +326,14 @@ export async function runInSlot(
     });
     unlock(permit.value, env);
     if (ran.isErr()) return err(ran.error);
+    if (headless && (ran.value === 78 || ran.value === 79)) {
+      return err(
+        failure("tool_missing", "Headless Xcode adapter failed", {
+          hint: "See the adapter diagnostic and build log",
+          details: { logPath, beforeBuild: ran.value === 78 && !existsSync(headlessMarker(slot)) },
+        }),
+      );
+    }
 
     // Xcode may save project files and string catalogs even on a failed build. In MCP
     // mode the caller only requests products. The next sync reconciles the slot copy.

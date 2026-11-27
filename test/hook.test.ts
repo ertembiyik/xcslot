@@ -37,6 +37,9 @@ function hook(command: string, options: { cwd?: string; path?: string; env?: Rec
 test.skipIf(process.platform !== "darwin")(
   "the hook puts xcslot in front of xcodebuild wherever a command starts",
   () => {
+    const standalone = "xcodebuild -scheme App -destination 'generic/platform=iOS Simulator' build";
+    expect(hook(standalone)).toBe("xcslot build -scheme App -destination 'generic/platform=iOS Simulator' build");
+    expect(hook(standalone + " | xcbeautify")).toBe("xcslot " + standalone + " | xcbeautify");
     expect(hook("xcodebuild -scheme App build")).toBe("xcslot xcodebuild -scheme App build");
     expect(hook("cd ios && NSUnbufferedIO=YES xcodebuild -scheme App build | xcbeautify")).toBe(
       "cd ios && NSUnbufferedIO=YES xcslot xcodebuild -scheme App build | xcbeautify",

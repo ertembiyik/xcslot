@@ -95,7 +95,11 @@ function matchingSymbols(dsym: string, binaries: readonly string[]): string[] {
   if (!existsSync(dwarf)) return [];
   const ids: string[] = [];
   const payloads = readdirSync(dwarf);
-  const mainDebug = binaries.find((binary) => binary.endsWith(".debug.dylib") && dirname(binary) === dsym.slice(0, -5));
+  const mainDebug = binaries.find(
+    (binary) =>
+      binary.endsWith(".debug.dylib") &&
+      [dsym.slice(0, -5), join(dsym.slice(0, -5), "Contents", "MacOS")].includes(dirname(binary)),
+  );
   if (mainDebug && !payloads.includes(basename(mainDebug))) return [];
   for (const name of payloads) {
     const expected = binaryUUIDs(join(dwarf, name));

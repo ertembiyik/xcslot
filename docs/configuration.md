@@ -69,15 +69,16 @@ be an input: when it changes what `prebuild` produces, touch a tracked input to 
 ## `~/.config/xcslot/config.json`, per machine
 
 ```json
-{ "slots": 3, "maxConcurrent": 3, "waitSeconds": 3600 }
+{ "slots": 3, "maxConcurrent": 3, "waitSeconds": 3600, "buildEngine": "auto" }
 ```
 
-| Key             | Default                      | Meaning                                              |
-| --------------- | ---------------------------- | ---------------------------------------------------- |
-| `slots`         | 3                            | Slots per repository.                                |
-| `maxConcurrent` | 3                            | Wrapped commands running at once on this Mac.        |
-| `waitSeconds`   | 3600                         | How long a command waits for a slot before it fails. |
-| `root`          | `~/Library/Developer/xcslot` | Where slots live.                                    |
+| Key             | Default                      | Meaning                                                                              |
+| --------------- | ---------------------------- | ------------------------------------------------------------------------------------ |
+| `slots`         | 3                            | Slots per repository.                                                                |
+| `buildEngine`   | `auto`                       | Engine for `xcslot build`: automatic selection, forced `mcp` or forced `xcodebuild`. |
+| `maxConcurrent` | 3                            | Wrapped commands running at once on this Mac.                                        |
+| `waitSeconds`   | 3600                         | How long a command waits for a slot before it fails.                                 |
+| `root`          | `~/Library/Developer/xcslot` | Where slots live.                                                                    |
 
 `--slots <count>` raises the slot count for one run, and `maxConcurrent` with it. `XCSLOT_HOME` overrides `root`, and `XCSLOT_CONFIG` names
 another config file.

@@ -1,7 +1,9 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
-import type { SlotPaths } from "../lib/layout.ts";
+import { type SlotPaths } from "../lib/layout.ts";
 import headlessBuild from "./headless-build.py" with { type: "text" };
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import type { Deps } from "../context.ts";
+import { holderOf } from "../slot/lock.ts";
 import { failure, type XcslotError } from "../lib/errors.ts";
 import { exec } from "../lib/proc.ts";
 import { err, ok, type Result } from "../lib/result.ts";
@@ -48,4 +50,24 @@ export function closeHeadlessWorkspace(slot: SlotPaths): Result<void, XcslotErro
       ? ok(undefined)
       : err(failure("sync_failed", `Could not close the slot workspace: ${done.stderr.trim()}`)),
   );
+}
+
+/** Build phases in Apple's service may not inherit the caller's slot environment. */
+export function nestedHeadlessData(deps: Deps, cwd: string): string | undefined {
+  for (let dir = cwd; dir !== dirname(dir); dir = dirname(dir)) {
+    if (basename(dir) !== "src") continue;
+    const slot = dirname(dir);
+    try {
+      const record = JSON.parse(readFileSync(join(slot, "headless-session.json"), "utf8"));
+      if (record.ready !== false || typeof record.project !== "string" || !record.project.startsWith(dir + "/"))
+        continue;
+      const owner = holderOf(join(slot, "lock"), { pid: deps.pid, processes: deps.processes, now: deps.now });
+      if (owner && existsSync(join(dirname(slot), "repo.json")) && existsSync(join(dir, ".git"))) {
+        // A nested CLI build uses the slot's CLI cache, independent from the in-flight IDE build.
+        return join(slot, "DerivedData");
+      }
+    } catch {
+      // This directory is not an active headless slot.
+    }
+  }
 }

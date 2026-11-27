@@ -1,4 +1,6 @@
 import { Command, CommanderError } from "@commander-js/extra-typings";
+import { automaticBuild } from "./commands/build.ts";
+import { buildEngines, type BuildEngine } from "./lib/config.ts";
 import { registerMisc } from "./commands/misc.ts";
 import { type PassthroughOptions, runInSlot, type Wrapped } from "./commands/passthrough.ts";
 import { registerSlots } from "./commands/slots.ts";
@@ -12,8 +14,8 @@ interface RunState {
   exitCode: number;
 }
 
-const WRAPPED = new Set<string>(["xcodebuild", "run"]);
-const OWN_VALUE_OPTIONS = new Set(["--products-to", "--wait", "--slots", "--from"]);
+const WRAPPED = new Set<string>(["xcodebuild", "run", "build"]);
+const OWN_VALUE_OPTIONS = new Set(["--products-to", "--wait", "--slots", "--from", "--engine"]);
 
 /**
  * xcslot's own options are double-dashed and come right after the command word; xcodebuild's are
@@ -63,7 +65,7 @@ export function createProgram(deps: Deps, state: RunState): Command {
     writeSuccess(mode(), deps.stdout, result.value, render);
   };
 
-  const wrap = (wrapped: Wrapped, description: string, examples: string[]) =>
+  const wrap = (wrapped: Wrapped | "build", description: string, examples: string[]) =>
     describe(
       program
         .command(wrapped)
@@ -96,7 +98,14 @@ export function createProgram(deps: Deps, state: RunState): Command {
           wholeNumber("--slots"),
         )
         .option("--from <dir>", "the worktree to build, instead of the current directory")
+        .option("--engine <engine>", "build command engine: auto, mcp or xcodebuild", (value): BuildEngine => {
+          if (!buildEngines.includes(value as BuildEngine))
+            throw new CommanderError(1, "commander.invalidArgument", "Choose auto, mcp or xcodebuild");
+          return value as BuildEngine;
+        })
         .action(async (args, options) => {
+          if (wrapped !== "build" && options.engine !== undefined)
+            return fail(failure("usage_error", "--engine is only supported by xcslot build"));
           const passthrough: PassthroughOptions = {
             dsym: options.dsym,
             ...(options.from !== undefined && { from: options.from }),
@@ -104,7 +113,10 @@ export function createProgram(deps: Deps, state: RunState): Command {
             ...(options.slots !== undefined && { slots: Math.max(1, options.slots) }),
             ...(options.productsTo !== undefined && { productsTo: options.productsTo }),
           };
-          const result = await runInSlot(deps, passthrough, wrapped, args);
+          const result =
+            wrapped === "build"
+              ? await automaticBuild(deps, passthrough, args, options.engine)
+              : await runInSlot(deps, passthrough, wrapped, args);
           if (result.isErr()) return fail(result.error);
           state.exitCode = result.value;
         }),
@@ -115,6 +127,10 @@ export function createProgram(deps: Deps, state: RunState): Command {
       },
     );
 
+  wrap("build", "Build in a warm slot, automatically selecting MCP or xcodebuild", [
+    "xcslot build -project App.xcodeproj -scheme App",
+    "xcslot build --engine xcodebuild -scheme App build",
+  ]);
   wrap("xcodebuild", "Run xcodebuild in a warm slot: put `xcslot` in front of the command you already have", [
     "xcslot xcodebuild -scheme App -destination 'generic/platform=iOS Simulator' build",
     "xcslot xcodebuild --products-to build/Products -scheme App -destination 'generic/platform=iOS Simulator' build",
