@@ -68,9 +68,10 @@ export function prepareSteps(
   slotSrc: string,
   config: ProjectConfig,
   touched: readonly string[],
+  skipTuist: boolean,
 ): Result<PrepareStep[], XcslotError> {
   return gitList(slotSrc, "ls-files", "-co", "--exclude-standard").andThen((tracked) => {
-    const steps = tuistSteps(slotSrc, tracked, touched);
+    const steps = skipTuist ? [] : tuistSteps(slotSrc, tracked, touched);
     for (const step of config.prepare) {
       const inputs = gitList(slotSrc, "ls-files", "-co", "--exclude-standard", "--", ...step.inputs);
       if (inputs.isErr()) return inputs.map(() => steps);

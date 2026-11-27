@@ -11,6 +11,16 @@ xcslot needs no configuration. Two optional files change its defaults.
 | Swift package                                                | Nothing; use `xcslot run -- swift build`. `.build` stays in the slot.                                                                                                                                                                                                                                                                                         |
 | Anything else that generates a project                       | Declare the step in `.xcslot.json`.                                                                                                                                                                                                                                                                                                                           |
 
+A standalone Swift package can also live under a root `Tuist.swift`. Run from the package directory and pass
+`--skip-tuist` to `xcslot run` or `xcslot xcodebuild` when the command does not need the generated project.
+
+```sh
+xcslot run --skip-tuist -- swift test
+```
+
+The flag skips automatic Tuist installation and generation for that invocation. Custom `prepare` steps in
+`.xcslot.json` still run.
+
 ## `.xcslot.json`, per repository
 
 In the repository root, all keys optional:

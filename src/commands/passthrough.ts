@@ -25,6 +25,7 @@ export interface PassthroughOptions {
   readonly slots?: number;
   readonly productsTo?: string;
   readonly dsym: boolean;
+  readonly skipTuist: boolean;
 }
 
 export type Wrapped = "xcodebuild" | "run";
@@ -168,7 +169,12 @@ export async function runInSlot(
     writeState(slot.state, state);
 
     const map = createPathMapper(slot.src, repo.value.worktree);
-    const steps = prepareSteps(slot.src, project.value, touchedPaths(from, repo.value.worktree, args));
+    const steps = prepareSteps(
+      slot.src,
+      project.value,
+      touchedPaths(from, repo.value.worktree, args),
+      options.skipTuist,
+    );
     if (steps.isErr()) return err(steps.error);
     let stepFailure: XcslotError | undefined;
     const prepared = await prepare(
