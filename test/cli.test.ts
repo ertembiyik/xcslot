@@ -538,3 +538,23 @@ test("an explicit Xcode project without a nearer Tuist manifest still skips Tuis
   expect(result.code).toBe(0);
   expect(existsSync(calls)).toBe(false);
 });
+
+test("trailing slashes do not hide a dangling project symlink from Tuist preparation", async () => {
+  const { repo, cwd, env } = mixedTuistRepo();
+  write(repo, { "App/Project.swift": "" });
+  symlinkSync("../../App/App.xcodeproj", join(cwd, "Example.xcodeproj"));
+  for (const target of ["Example.xcodeproj/", "Example.xcodeproj///"]) {
+    const result = await cli(["xcodebuild", "-project", target, "build"], { cwd, home: scratch(), env });
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain("xcslot: tuist generate");
+  }
+});
+
+test("a package-local project through a symlink with trailing slashes still skips Tuist", async () => {
+  const { cwd, home, env, calls } = mixedTuistRepo();
+  write(cwd, { "Sources/Example.xcodeproj/project.pbxproj": "" });
+  symlinkSync("Sources/Example.xcodeproj", join(cwd, "Example.xcodeproj"));
+  const result = await cli(["xcodebuild", "-project", "Example.xcodeproj/", "build"], { cwd, home, env });
+  expect(result.code).toBe(0);
+  expect(existsSync(calls)).toBe(false);
+});

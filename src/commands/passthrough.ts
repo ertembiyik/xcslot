@@ -100,7 +100,9 @@ function physicalPath(path: string): string | undefined {
       const leaf = basename(prefix);
       if (leaf === ".." || dirname(prefix) === prefix) return undefined;
       try {
-        if (lstatSync(prefix, { throwIfNoEntry: false })) return undefined;
+        // lstat follows the final symlink if the path ends with a slash.
+        const entry = prefix.replace(/\/+$/, "") || "/";
+        if (lstatSync(entry, { throwIfNoEntry: false })) return undefined;
       } catch {
         return undefined;
       }
