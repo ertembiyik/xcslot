@@ -41,6 +41,7 @@ test("every error a command declares is a known code, and every command is in th
     [
       "commands",
       "doctor",
+      "mcp-build",
       "run",
       "skill install",
       "skill print",

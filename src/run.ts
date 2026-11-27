@@ -70,7 +70,11 @@ export function createProgram(deps: Deps, state: RunState): Command {
         .description(description)
         .argument(
           "[args...]",
-          wrapped === "run" ? "the command and its arguments, after --" : "xcodebuild's arguments, unchanged",
+          wrapped === "mcp-build"
+            ? "project or workspace, scheme, and optional destination display title"
+            : wrapped === "run"
+              ? "the command and its arguments, after --"
+              : "xcodebuild's arguments, unchanged",
         )
         .option(
           "--products-to <dir>",
@@ -119,6 +123,10 @@ export function createProgram(deps: Deps, state: RunState): Command {
   wrap("run", "Run any build command in a warm slot, in the slot's copy of the current directory", [
     "xcslot run -- swift build",
     "xcslot run -- swift test --filter ParserTests",
+  ]);
+  wrap("mcp-build", "Build a project or workspace in a warm slot with Apple's headless Xcode service", [
+    "xcslot mcp-build App.xcodeproj App",
+    'xcslot mcp-build --products-to out App.xcworkspace "Demo App" "My Mac"',
   ]);
   registerSlots(program, deps, finish);
   registerMisc(program, deps, finish);

@@ -9,7 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 import { failure, type XcslotError } from "../lib/errors.ts";
 import { exec } from "../lib/proc.ts";
 import { err, ok, type Result } from "../lib/result.ts";
@@ -82,6 +82,33 @@ function dsymFor(products: string, binary: string): string {
   return outer === -1 ? `${binary}.dSYM` : `${join(products, ...parts.slice(0, outer + 1))}.dSYM`;
 }
 
+const binaryUUIDs = (path: string): string[] =>
+  exec(["dwarfdump", "--uuid", path]).match(
+    (done) =>
+      done.code === 0 ? [...done.stdout.matchAll(/^UUID: ([0-9A-F-]+) /gm)].map((m) => m[1] as string).sort() : [],
+    () => [],
+  );
+
+/** Keep Xcode's own dSYM when its DWARF payloads identify binaries we actually exported. */
+function matchingSymbols(dsym: string, binaries: readonly string[]): string[] {
+  const dwarf = join(dsym, "Contents", "Resources", "DWARF");
+  if (!existsSync(dwarf)) return [];
+  const ids: string[] = [];
+  const payloads = readdirSync(dwarf);
+  const mainDebug = binaries.find((binary) => binary.endsWith(".debug.dylib") && dirname(binary) === dsym.slice(0, -5));
+  if (mainDebug && !payloads.includes(basename(mainDebug))) return [];
+  for (const name of payloads) {
+    const expected = binaryUUIDs(join(dwarf, name));
+    if (
+      expected.length === 0 ||
+      !binaries.some((binary) => basename(binary) === name && binaryUUIDs(binary).join() === expected.join())
+    )
+      return [];
+    ids.push(...expected);
+  }
+  return ids;
+}
+
 /**
  * Debug builds keep their debug info in the slot's object files, which the next build in the slot replaces; a
  * debugger would then show wrong lines. A dSYM made while the slot is still held carries the debug info with
@@ -91,17 +118,17 @@ export async function embedDebugSymbols(products: string, slotSrc: string, workt
   const groups = Map.groupBy(debuggableBinaries(products), (binary) => dsymFor(products, binary));
   const made = await Promise.all(
     [...groups].map(async ([dsym, binaries]) => {
-      const done = Bun.spawn(["dsymutil", ...binaries, "-o", dsym], { stdout: "ignore", stderr: "pipe" });
-      const warnings = await new Response(done.stderr).text();
-      const empty = warnings.split("no debug symbols in executable").length - 1 >= binaries.length;
-      if ((await done.exited) !== 0 || empty) {
-        rmSync(dsym, { recursive: true, force: true });
-        return false;
+      let uuids = matchingSymbols(dsym, binaries);
+      if (!uuids.length) {
+        const done = Bun.spawn(["dsymutil", ...binaries, "-o", dsym], { stdout: "ignore", stderr: "pipe" });
+        const warnings = await new Response(done.stderr).text();
+        const empty = warnings.split("no debug symbols in executable").length - 1 >= binaries.length;
+        if ((await done.exited) !== 0 || empty) {
+          rmSync(dsym, { recursive: true, force: true });
+          return false;
+        }
+        uuids = binaryUUIDs(dsym);
       }
-      const uuids = exec(["dwarfdump", "--uuid", dsym]).match(
-        (out) => [...out.stdout.matchAll(/^UUID: ([0-9A-F-]+) /gm)].map((match) => match[1] as string),
-        () => [],
-      );
       for (const uuid of uuids) {
         writeFileSync(join(dsym, "Contents", "Resources", `${uuid}.plist`), remapPlist(slotSrc, worktree));
       }
@@ -117,7 +144,8 @@ export async function embedDebugSymbols(products: string, slotSrc: string, workt
  */
 export function cloneProducts(derivedData: string, destination: string): Result<string, XcslotError> {
   const products = join(derivedData, "Build", "Products");
-  if (!existsSync(products)) return ok(destination);
+  if (!existsSync(products) || readdirSync(products).length === 0)
+    return err(failure("sync_failed", `No built products to export from ${products}`));
   const usable = checkProductsDestination(destination);
   if (usable.isErr()) return err(usable.error);
   rmSync(destination, { recursive: true, force: true });

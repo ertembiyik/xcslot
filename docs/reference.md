@@ -5,18 +5,19 @@ for an agent, with examples.
 
 ## Commands
 
-| Command                                  | What it does                                                                |
-| ---------------------------------------- | --------------------------------------------------------------------------- |
-| `xcslot xcodebuild <xcodebuild args>`    | Runs `xcodebuild` in a warm slot. Builds, tests and archives.               |
-| `xcslot run -- <command>`                | Runs any other build command in the slot's copy of the current directory.   |
-| `xcslot status`                          | Who holds what right now: every repository's slots and the machine-wide cap |
-| `xcslot slots list [--sizes]`            | This repository's slots: holder, the worktree each is warm for, size.       |
-| `xcslot slots remove <n> \| --all --yes` | Deletes slots and their build data. The next build there is a cold one.     |
-| `xcslot slots prune`                     | Runs the daily housekeeping now.                                            |
-| `xcslot doctor`                          | Checks the tools, the config and the slots folder; each failure says how.   |
-| `xcslot commands [--json]`               | Lists every command with its options, examples and errors.                  |
-| `xcslot skill`                           | Prints the skill that teaches an agent to build through xcslot.             |
-| `xcslot skill install --dir <folder>`    | Writes the skill into a skills folder as `xcslot/SKILL.md`.                 |
+| Command                                             | What it does                                                                |
+| --------------------------------------------------- | --------------------------------------------------------------------------- |
+| `xcslot xcodebuild <xcodebuild args>`               | Runs `xcodebuild` in a warm slot. Builds, tests and archives.               |
+| `xcslot mcp-build <project> <scheme> [destination]` | Builds a scheme with Apple's headless Xcode service in the slot.            |
+| `xcslot run -- <command>`                           | Runs any other build command in the slot's copy of the current directory.   |
+| `xcslot status`                                     | Who holds what right now: every repository's slots and the machine-wide cap |
+| `xcslot slots list [--sizes]`                       | This repository's slots: holder, the worktree each is warm for, size.       |
+| `xcslot slots remove <n> \| --all --yes`            | Deletes slots and their build data. The next build there is a cold one.     |
+| `xcslot slots prune`                                | Runs the daily housekeeping now.                                            |
+| `xcslot doctor`                                     | Checks the tools, the config and the slots folder; each failure says how.   |
+| `xcslot commands [--json]`                          | Lists every command with its options, examples and errors.                  |
+| `xcslot skill`                                      | Prints the skill that teaches an agent to build through xcslot.             |
+| `xcslot skill install --dir <folder>`               | Writes the skill into a skills folder as `xcslot/SKILL.md`.                 |
 
 ## Options of `xcodebuild` and `run`
 
@@ -36,6 +37,28 @@ xcslot xcodebuild --products-to build/out -scheme App -configuration Debug build
 | `--slots <count>`               | Use up to this many slots for this run, and raise `maxConcurrent` to match. Extra slots are removed after a day unused. |
 | `--from <dir>`                  | The worktree to build, instead of the current directory.                                                                |
 
+## Headless Xcode builds
+
+On a Mac with Xcode 27's headless service enabled and access to the slots folder, pass the path to the
+project or workspace and a scheme. The default destination is the generic iOS Simulator. To select another
+destination, pass its exact Xcode display title. The command runs the scheme's build action and returns 65
+if Xcode fails the build. It supports the slot options above, including `--products-to`.
+
+```sh
+xcslot mcp-build --products-to out App.xcodeproj App
+xcslot mcp-build App.xcworkspace "Demo App" "My Mac"
+```
+
+The slot stays locked through build and product export. An identical checkout can reuse the open workspace.
+Before changing its inputs, using a different runner, or removing the slot, xcslot closes the workspace.
+Closing can save IDE metadata, so xcslot mirrors the caller's inputs again after a close. Generated-project
+preparation and failed builds leave the workspace closed. Build data stays warm at the same path for the project,
+scheme and destination. The command prints diagnostics and Xcode's full build-log path. Build phases run in the headless service's environment.
+
+In this mode Xcode's changes to the slot's source tree, including project settings and string catalogs, stay
+in the slot. `--products-to` exports the workspace's standard `Build/Products` tree and reports an error if
+it cannot find products. Use `xcslot xcodebuild` for tests, archives, custom build flags or output locations.
+
 ## What comes back
 
 - **Output and exit code** of the wrapped command, unchanged. Lines that start with `xcslot:` are xcslot's own
@@ -43,7 +66,7 @@ xcslot xcodebuild --products-to build/out -scheme App -configuration Debug build
 - **Paths.** The slot's source paths in the output are rewritten to your worktree's, so
   `Sources/App/View.swift:12:5: error:` names the file you edit.
 - **Files the build wrote** into the source tree (recorded snapshot references, an updated `Package.resolved`,
-  linter fixes) are copied back to the worktree and listed. A file that you also changed during the build is
+  linter fixes) from `xcodebuild` and `run` are copied back to the worktree and listed. A file that you also changed during the build is
   left alone and named.
 - **Products.** With `--products-to`, your own `-derivedDataPath`, or a build setting that puts products in
   the worktree (`SYMROOT`, `DSTROOT`, `BUILD_DIR`, `BUILD_ROOT`, `CONFIGURATION_BUILD_DIR`), the products are

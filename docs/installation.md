@@ -86,7 +86,7 @@ worktree, and xcslot removes idle extra slots once a day.
 Xcode 27.3 beta gives its built-in Claude agent a hook that refuses the first Bash command in a session that runs
 `xcodebuild`, `xcslot xcodebuild` included, and suggests Xcode's own `BuildProject` tool instead. With the
 `AGENTS.md` lines above, the agent runs the command again and it goes through. `BuildProject` builds in the
-worktree's own DerivedData, so it starts cold in every new worktree.
+worktree's own DerivedData, so it starts cold in every new worktree. To use Apple's headless build action in a warm slot, see [Headless Xcode builds](reference.md#headless-xcode-builds).
 
 ## CI
 

@@ -98,6 +98,8 @@ xcslot: slot 1: xcodebuild exited 0 after 3.7s; products: ~/Library/Developer/xc
 | `xcslot xcodebuild --products-to out -scheme App build` | Keeps the built app, with debug symbols                |
 | `xcslot status`                                         | Who holds which slot right now                         |
 
+With Apple's headless Xcode service enabled, `xcslot mcp-build App.xcodeproj App` builds the scheme inside a slot. [Headless Xcode builds](docs/reference.md#headless-xcode-builds)
+
 ## For coding agents
 
 xcslot is built to be driven by an agent: it never prompts, it says who it is waiting for, and its own

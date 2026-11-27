@@ -18,7 +18,7 @@ test("the compiled binary starts, reports its version and prints the catalog as 
   expect(sh(process.cwd(), binary, "--version").trim()).toBe(version);
   const catalog = JSON.parse(sh(process.cwd(), binary, "commands")) as { ok: boolean; data: { commands: unknown[] } };
   expect(catalog.ok).toBe(true);
-  expect(catalog.data.commands.length).toBe(10);
+  expect(catalog.data.commands.length).toBe(11);
   expect(sh(process.cwd(), binary, "skill")).toContain("name: xcslot");
 }, 60_000);
 

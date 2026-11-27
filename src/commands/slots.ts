@@ -140,7 +140,12 @@ export function registerSlots(program: Command, deps: Deps, finish: Finish): voi
                 );
               }
               const env = lockEnv(deps);
-              const removed = targets.filter((slot) => removeSlot(slotPaths(repo.dir, slot), repo.main, env));
+              const removed: number[] = [];
+              for (const slot of targets) {
+                const result = removeSlot(slotPaths(repo.dir, slot), repo.main, env);
+                if (result.isErr()) return err({ ...result.error, details: { slot, removed } });
+                if (result.value) removed.push(slot);
+              }
               const busy = targets.filter((slot) => !removed.includes(slot));
               return ok({
                 data: { removed, busy },
@@ -151,7 +156,14 @@ export function registerSlots(program: Command, deps: Deps, finish: Finish): voi
       ),
     {
       examples: ["xcslot slots remove 2 --yes", "xcslot slots remove --all --yes"],
-      errors: ["not_a_repository", "slot_not_found", "confirmation_required", "state_invalid"],
+      errors: [
+        "not_a_repository",
+        "slot_not_found",
+        "confirmation_required",
+        "state_invalid",
+        "sync_failed",
+        "tool_missing",
+      ],
       destructive: true,
     },
   );
