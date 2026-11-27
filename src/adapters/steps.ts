@@ -1,13 +1,15 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { constants, existsSync, readFileSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import type { ProjectConfig } from "../lib/config.ts";
 import type { XcslotError } from "../lib/errors.ts";
 import { gitList } from "../lib/proc.ts";
 import { ok, type Result } from "../lib/result.ts";
 import type { PrepareStep } from "../slot/prepare.ts";
+import type { SlotState } from "../slot/state.ts";
 
 const TUIST_MANIFEST = /(^|\/)(Project|Tuist|Workspace|Package)\.swift$|\/Tuist\/.*\.swift$|Package\.resolved$/;
 const TUIST_PACKAGES = /(^|\/)Tuist\/Package\.(swift|resolved)$/;
+const TUIST_ROOT_MANIFESTS = ["Tuist.swift", "Project.swift", "Workspace.swift"];
 const MISE_FILES = ["mise.toml", ".mise.toml", ".tool-versions"];
 
 /** A repository that pins Tuist with mise is run through mise, so the slot builds with the pinned version. */
@@ -21,20 +23,70 @@ function tuistCommand(slotSrc: string, projectDir: string): string[] {
 /** Whether `path` is `dir` or lies under it; both are relative to the repository root, which is ".". */
 const within = (path: string, dir: string) => dir === "." || path === dir || path.startsWith(`${dir}/`);
 
+/** Walk up from a repository directory. Tuist's own package is not a standalone Swift package. */
+function standalonePackage(slotSrc: string, paths: ReadonlySet<string>, cwd: string): string | undefined {
+  const hasManifest = (path: string) => paths.has(path) && existsSync(join(slotSrc, path));
+  for (let dir = cwd; ; dir = dirname(dir)) {
+    if (TUIST_ROOT_MANIFESTS.some((name) => hasManifest(join(dir, name)))) return undefined;
+    const manifest = join(dir, "Package.swift");
+    if (!TUIST_PACKAGES.test(manifest) && hasManifest(manifest)) return dir;
+    if (dir === ".") return undefined;
+  }
+}
+
+/** Catch links in conventional package input trees without trying to interpret the package manifest. */
+function hasExternalPackageLink(slotSrc: string, files: SlotState["files"], dir: string): boolean {
+  const inputRoots = ["Package.swift", "Sources", "Tests", "Plugins"].map((name) => join(dir, name));
+  return Object.entries(files).some(([path, file]) => {
+    if ((file.src[2] & constants.S_IFMT) !== constants.S_IFLNK || !inputRoots.some((root) => within(path, root))) {
+      return false;
+    }
+    try {
+      const root = realpathSync.native(join(slotSrc, dir));
+      const target = relative(root, realpathSync.native(join(slotSrc, path)));
+      return target === ".." || target.startsWith("../") || isAbsolute(target);
+    } catch {
+      // A cold slot may not have generated the target yet.
+      return true;
+    }
+  });
+}
+
 /**
  * A Tuist project is generated inside the slot: the generated workspace holds absolute paths, and `tuist
  * install` checkouts do too, so neither can be mirrored from the worktree.
  */
-function tuistSteps(slotSrc: string, tracked: readonly string[], touched: readonly string[]): PrepareStep[] {
+function tuistSteps(
+  slotSrc: string,
+  tracked: readonly string[],
+  mirrored: SlotState["files"],
+  [cwd, ...named]: readonly [string, ...string[]],
+): PrepareStep[] {
   const manifest = tracked
     .filter((path) => path === "Tuist.swift" || path.endsWith("/Tuist.swift"))
     .sort((a, b) => a.split("/").length - b.split("/").length)[0];
   if (manifest === undefined) return [];
   const rel = dirname(manifest);
   // A command run elsewhere in the repository, such as `swift build` in a standalone package, needs no project.
-  if (!touched.some((path) => within(path, rel) || within(rel, path))) return [];
+  if (![cwd, ...named].some((path) => within(path, rel) || within(rel, path))) return [];
+  // The slot Git index sees only the gitlink; the sync snapshot includes the submodule's files.
+  const paths = new Set(Object.keys(mirrored));
+  const standalone = standalonePackage(slotSrc, paths, cwd);
+  if (
+    standalone !== undefined &&
+    standalone !== "." &&
+    named.every(
+      (path) =>
+        within(path, standalone) &&
+        // An explicit project inside the package can belong to a closer Tuist manifest.
+        (!/\.(xcodeproj|xcworkspace)(\/|$)/i.test(path) ||
+          standalonePackage(slotSrc, paths, dirname(path)) !== undefined),
+    ) &&
+    !hasExternalPackageLink(slotSrc, mirrored, standalone)
+  )
+    return [];
   const projectDir = join(slotSrc, rel);
-  const inProject = tracked.filter((path) => rel === "." || path.startsWith(`${rel}/`));
+  const inProject = [...new Set([...tracked, ...paths])].filter((path) => rel === "." || path.startsWith(`${rel}/`));
   const tuist = tuistCommand(slotSrc, projectDir);
   const packages = inProject.filter((path) => TUIST_PACKAGES.test(path));
   const steps: PrepareStep[] = [];
@@ -67,10 +119,11 @@ function tuistSteps(slotSrc: string, tracked: readonly string[], touched: readon
 export function prepareSteps(
   slotSrc: string,
   config: ProjectConfig,
-  touched: readonly string[],
+  touched: readonly [string, ...string[]],
+  mirrored: SlotState["files"],
 ): Result<PrepareStep[], XcslotError> {
   return gitList(slotSrc, "ls-files", "-co", "--exclude-standard").andThen((tracked) => {
-    const steps = tuistSteps(slotSrc, tracked, touched);
+    const steps = tuistSteps(slotSrc, tracked, mirrored, touched);
     for (const step of config.prepare) {
       const inputs = gitList(slotSrc, "ls-files", "-co", "--exclude-standard", "--", ...step.inputs);
       if (inputs.isErr()) return inputs.map(() => steps);
