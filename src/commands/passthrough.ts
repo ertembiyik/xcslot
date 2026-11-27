@@ -225,7 +225,12 @@ export async function runInSlot(
     writeState(slot.state, state);
 
     const map = createPathMapper(slot.src, repo.value.worktree);
-    const steps = prepareSteps(slot.src, project.value, touchedPaths(from, repo.value.worktree, wrapped, args));
+    const steps = prepareSteps(
+      slot.src,
+      project.value,
+      touchedPaths(from, repo.value.worktree, wrapped, args),
+      state.files,
+    );
     if (steps.isErr()) return err(steps.error);
     let stepFailure: XcslotError | undefined;
     const prepared = await prepare(

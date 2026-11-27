@@ -625,3 +625,48 @@ test("package-local compiler include paths and unrelated flags still skip Tuist"
   expect(result.stdout).toBe("package-local\n");
   expect(existsSync(calls)).toBe(false);
 });
+
+test("an implicit generated source symlink keeps Tuist preparation", async () => {
+  const { cwd, home, repo, env } = mixedTuistRepo();
+  write(repo, {
+    "bin/tuist":
+      '#!/bin/sh\nif [ "$1" = generate ]; then mkdir -p Derived; echo generated > Derived/Generated.swift; fi\n',
+    "bin/swift": "#!/bin/sh\ncat Sources/Generated.swift\n",
+  });
+  chmodSync(join(repo, "bin/swift"), 0o755);
+  symlinkSync("../../../Derived/Generated.swift", join(cwd, "Sources/Generated.swift"));
+  sh(repo, "git", "add", "Packages/Example/Sources/Generated.swift");
+  sh(repo, "git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "source link");
+  const result = await cli(["run", "--", "swift", "build"], { cwd, home, env });
+  expect(result.code, result.stderr).toBe(0);
+  expect(result.stdout).toBe("generated\n");
+  expect(result.stderr).toContain("xcslot: tuist generate");
+});
+
+test("an implicit package-local source symlink still skips Tuist", async () => {
+  const { cwd, home, repo, env, calls } = mixedTuistRepo();
+  write(repo, { "bin/swift": "#!/bin/sh\ncat Sources/Local.swift\n" });
+  chmodSync(join(repo, "bin/swift"), 0o755);
+  write(cwd, { "Sources/Example.swift": "local\n" });
+  symlinkSync("Example.swift", join(cwd, "Sources/Local.swift"));
+  const result = await cli(["run", "--", "swift", "build"], { cwd, home, env });
+  expect(result.code, result.stderr).toBe(0);
+  expect(result.stdout).toBe("local\n");
+  expect(existsSync(calls)).toBe(false);
+});
+
+test("a named project with a nearer manifest in a synced submodule keeps Tuist preparation", async () => {
+  const { cwd, home, repo, env } = mixedTuistRepo();
+  rmSync(join(cwd, "App"), { recursive: true });
+  sh(repo, "git", "rm", "Packages/Example/App/Project.swift");
+  const submodule = makeRepo({ "Project.swift": "" }, "nested");
+  sh(repo, "git", "-c", "protocol.file.allow=always", "submodule", "add", "-q", submodule, "Packages/Example/App");
+  sh(repo, "git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "app submodule");
+  write(repo, {
+    "bin/tuist": '#!/bin/sh\nif [ "$1" = generate ]; then mkdir -p Packages/Example/App/App.xcodeproj; fi\n',
+    "bin/xcodebuild": '#!/bin/sh\ntest -f App/Project.swift && test -d "$2"\n',
+  });
+  const result = await cli(["xcodebuild", "-project", "App/App.xcodeproj", "build"], { cwd, home, env });
+  expect(result.code, result.stderr).toBe(0);
+  expect(result.stderr).toContain("xcslot: tuist generate");
+});
