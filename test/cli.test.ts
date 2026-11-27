@@ -422,11 +422,13 @@ test("a Tuist project is generated only for a command that touches it", async ()
   expect(generated()).toBe(3);
 });
 
-test("skip-tuist skips automatic preparation in a root Tuist project and keeps custom steps", async () => {
+function mixedTuistRepo() {
   const repo = makeRepo({
     "Tuist.swift": "",
     "Tuist/Package.swift": "",
     "Packages/Example/Package.swift": "",
+    "Packages/Example/Sources/Example.swift": "",
+    "Packages/Example/App/Project.swift": "",
     ".xcslot.json": JSON.stringify({
       prepare: [{ name: "custom setup", run: ["/bin/sh", "-c", "echo custom"], inputs: ["Tuist.swift"] }],
     }),
@@ -439,19 +441,53 @@ test("skip-tuist skips automatic preparation in a root Tuist project and keeps c
   const calls = join(home, "tuist-calls");
   const cwd = join(repo, "Packages/Example");
   const env = { PATH: `${join(repo, "bin")}:${process.env.PATH}`, TUIST_CALLS: calls };
+  return { repo, home, calls, cwd, env };
+}
 
-  const skipped = await cli(["xcodebuild", "--skip-tuist", "-scheme", "Example-Package", "test"], { cwd, home, env });
-  expect(skipped.code).toBe(0);
-  expect(skipped.stdout).toContain("Example-Package");
-  expect(skipped.stdout).not.toContain("--skip-tuist");
-  expect(skipped.stderr).toContain("xcslot: custom setup");
+test("both wrappers skip root Tuist preparation inside a standalone package and still run custom steps", async () => {
+  const { home, calls, cwd, env } = mixedTuistRepo();
+  const build = await cli(["xcodebuild", "-scheme", "Example-Package", "test"], { cwd, home, env });
+  expect(build.code).toBe(0);
+  expect(build.stdout).toContain("Example-Package");
+  expect(build.stderr).toContain("xcslot: custom setup");
   expect(existsSync(calls)).toBe(false);
 
-  const skippedRun = await cli(["run", "--skip-tuist", "--", "true"], { cwd, home, env });
-  expect(skippedRun.code).toBe(0);
+  const run = await cli(["run", "--", "cat", "./Example.swift"], { cwd: join(cwd, "Sources"), home, env });
+  expect(run.code).toBe(0);
   expect(existsSync(calls)).toBe(false);
+});
 
-  const usual = await cli(["run", "--", "true"], { cwd, home, env });
-  expect(usual.code).toBe(0);
-  expect(readFileSync(calls, "utf8")).toBe("install\ngenerate --no-open\n");
+test("explicit command paths outside the package keep Tuist preparation", async () => {
+  const { repo, cwd, env } = mixedTuistRepo();
+  const cases = [
+    ["xcodebuild", "-workspace", "../../App.xcworkspace", "build"],
+    ["xcodebuild", "-project", "../../App=Enterprise.xcodeproj", "build"],
+    ["xcodebuild", "-project", join(repo, "App.xcodeproj"), "build"],
+    ["xcodebuild", "-workspace", join(scratch(), "Other.xcworkspace"), "build"],
+    ["run", "--", "true", "--package-path=../.."],
+  ];
+  for (const args of cases) {
+    const result = await cli(args, { cwd, home: scratch(), env });
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain("xcslot: tuist generate");
+  }
+});
+
+test("a Tuist manifest takes precedence over an ancestor package manifest", async () => {
+  const { repo, cwd, env } = mixedTuistRepo();
+  write(repo, { "Package.swift": "" });
+  for (const directory of [repo, join(repo, "Tuist"), join(cwd, "App")]) {
+    const result = await cli(["run", "--", "true"], { cwd: directory, home: scratch(), env });
+    expect(result.code).toBe(0);
+    expect(result.stderr).toContain("xcslot: tuist install");
+    expect(result.stderr).toContain("xcslot: tuist generate");
+  }
+});
+
+test("a deleted package manifest does not stop Tuist preparation", async () => {
+  const { cwd, home, env } = mixedTuistRepo();
+  rmSync(join(cwd, "Package.swift"));
+  const result = await cli(["run", "--", "true"], { cwd, home, env });
+  expect(result.code).toBe(0);
+  expect(result.stderr).toContain("xcslot: tuist generate");
 });

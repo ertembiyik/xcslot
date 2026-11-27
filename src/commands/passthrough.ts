@@ -25,7 +25,6 @@ export interface PassthroughOptions {
   readonly slots?: number;
   readonly productsTo?: string;
   readonly dsym: boolean;
-  readonly skipTuist: boolean;
 }
 
 export type Wrapped = "xcodebuild" | "run";
@@ -87,18 +86,25 @@ async function spawnThrough(deps: Deps, child: Child): Promise<Result<number, Xc
 
 const seconds = (ms: number) => (ms / 1000).toFixed(1);
 
-/** The directory a command runs in and the worktree paths its arguments name, relative to the repository root. */
-function touchedPaths(from: string, worktree: string, args: readonly string[]): string[] {
-  const inside = (path: string) => {
-    const rel = relative(worktree, path);
-    return rel.startsWith("..") || isAbsolute(rel) ? undefined : rel || ".";
-  };
-  const named = args
-    .flatMap((arg) => [arg, arg.slice(arg.indexOf("=") + 1)])
-    .filter((value) => value.includes("/"))
-    .map((value) => inside(resolve(from, value)));
+const PATH_OPTIONS = new Set(["-project", "-workspace", "--package-path"]);
+
+/** The invocation directory and path-like arguments, relative to the repository root. */
+function touchedPaths(from: string, worktree: string, args: readonly string[]): [string, ...string[]] {
+  const cwd = relative(worktree, from) || ".";
   // A directory that cannot be placed counts as the root, so the project's steps still run.
-  return [inside(from) ?? ".", ...named].filter((path) => path !== undefined);
+  if (cwd === ".." || cwd.startsWith("../") || isAbsolute(cwd)) return ["."];
+  const named = args.flatMap((arg, i) => {
+    const pathValue = PATH_OPTIONS.has(args[i - 1] ?? "");
+    const assignment = pathValue ? undefined : arg.match(/^(-{1,2}[\w-]+|[A-Za-z_]\w*)=(.*)$/s);
+    const value = assignment?.[2] ?? arg;
+    const pathOption = pathValue || PATH_OPTIONS.has(assignment?.[1] ?? "");
+    if (pathOption || value === "." || value === ".." || (!value.startsWith("-") && value.includes("/"))) {
+      // Keep paths outside the worktree too: they disqualify a package-local invocation.
+      return [relative(worktree, resolve(from, value)) || "."];
+    }
+    return [];
+  });
+  return [cwd, ...named];
 }
 
 /** Syncs the worktree into a free slot, runs the command there with the slot's warm build data, and hands results back. */
@@ -169,12 +175,7 @@ export async function runInSlot(
     writeState(slot.state, state);
 
     const map = createPathMapper(slot.src, repo.value.worktree);
-    const steps = prepareSteps(
-      slot.src,
-      project.value,
-      touchedPaths(from, repo.value.worktree, args),
-      options.skipTuist,
-    );
+    const steps = prepareSteps(slot.src, project.value, touchedPaths(from, repo.value.worktree, args));
     if (steps.isErr()) return err(steps.error);
     let stepFailure: XcslotError | undefined;
     const prepared = await prepare(

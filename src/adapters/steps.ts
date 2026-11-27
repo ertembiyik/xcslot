@@ -8,6 +8,7 @@ import type { PrepareStep } from "../slot/prepare.ts";
 
 const TUIST_MANIFEST = /(^|\/)(Project|Tuist|Workspace|Package)\.swift$|\/Tuist\/.*\.swift$|Package\.resolved$/;
 const TUIST_PACKAGES = /(^|\/)Tuist\/Package\.(swift|resolved)$/;
+const TUIST_ROOT_MANIFESTS = ["Tuist.swift", "Project.swift", "Workspace.swift"];
 const MISE_FILES = ["mise.toml", ".mise.toml", ".tool-versions"];
 
 /** A repository that pins Tuist with mise is run through mise, so the slot builds with the pinned version. */
@@ -21,18 +22,36 @@ function tuistCommand(slotSrc: string, projectDir: string): string[] {
 /** Whether `path` is `dir` or lies under it; both are relative to the repository root, which is ".". */
 const within = (path: string, dir: string) => dir === "." || path === dir || path.startsWith(`${dir}/`);
 
+/** Walk up from the command directory. Tuist's own package is not a standalone Swift package. */
+function standalonePackage(slotSrc: string, tracked: readonly string[], cwd: string): string | undefined {
+  const paths = new Set(tracked);
+  const hasManifest = (path: string) => paths.has(path) && existsSync(join(slotSrc, path));
+  for (let dir = cwd; ; dir = dirname(dir)) {
+    if (TUIST_ROOT_MANIFESTS.some((name) => hasManifest(join(dir, name)))) return undefined;
+    const manifest = join(dir, "Package.swift");
+    if (!TUIST_PACKAGES.test(manifest) && hasManifest(manifest)) return dir;
+    if (dir === ".") return undefined;
+  }
+}
+
 /**
  * A Tuist project is generated inside the slot: the generated workspace holds absolute paths, and `tuist
  * install` checkouts do too, so neither can be mirrored from the worktree.
  */
-function tuistSteps(slotSrc: string, tracked: readonly string[], touched: readonly string[]): PrepareStep[] {
+function tuistSteps(
+  slotSrc: string,
+  tracked: readonly string[],
+  [cwd, ...named]: readonly [string, ...string[]],
+): PrepareStep[] {
   const manifest = tracked
     .filter((path) => path === "Tuist.swift" || path.endsWith("/Tuist.swift"))
     .sort((a, b) => a.split("/").length - b.split("/").length)[0];
   if (manifest === undefined) return [];
   const rel = dirname(manifest);
   // A command run elsewhere in the repository, such as `swift build` in a standalone package, needs no project.
-  if (!touched.some((path) => within(path, rel) || within(rel, path))) return [];
+  if (![cwd, ...named].some((path) => within(path, rel) || within(rel, path))) return [];
+  const standalone = standalonePackage(slotSrc, tracked, cwd);
+  if (standalone !== undefined && standalone !== "." && named.every((path) => within(path, standalone))) return [];
   const projectDir = join(slotSrc, rel);
   const inProject = tracked.filter((path) => rel === "." || path.startsWith(`${rel}/`));
   const tuist = tuistCommand(slotSrc, projectDir);
@@ -67,11 +86,10 @@ function tuistSteps(slotSrc: string, tracked: readonly string[], touched: readon
 export function prepareSteps(
   slotSrc: string,
   config: ProjectConfig,
-  touched: readonly string[],
-  skipTuist: boolean,
+  touched: readonly [string, ...string[]],
 ): Result<PrepareStep[], XcslotError> {
   return gitList(slotSrc, "ls-files", "-co", "--exclude-standard").andThen((tracked) => {
-    const steps = skipTuist ? [] : tuistSteps(slotSrc, tracked, touched);
+    const steps = tuistSteps(slotSrc, tracked, touched);
     for (const step of config.prepare) {
       const inputs = gitList(slotSrc, "ls-files", "-co", "--exclude-standard", "--", ...step.inputs);
       if (inputs.isErr()) return inputs.map(() => steps);

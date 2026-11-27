@@ -86,7 +86,6 @@ export function createProgram(deps: Deps, state: RunState): Command {
           wholeNumber("--wait"),
         )
         .option("--no-wait", "fail at once with slots_busy when no slot is free")
-        .option("--skip-tuist", "skip automatic Tuist install and generation for this command", false)
         .option(
           "--slots <count>",
           "use up to this many slots for this run, and let as many builds run at once; extra slots are removed after a day unused",
@@ -96,7 +95,6 @@ export function createProgram(deps: Deps, state: RunState): Command {
         .action(async (args, options) => {
           const passthrough: PassthroughOptions = {
             dsym: options.dsym,
-            skipTuist: options.skipTuist,
             ...(options.from !== undefined && { from: options.from }),
             ...(options.wait !== undefined && { wait: options.wait }),
             ...(options.slots !== undefined && { slots: Math.max(1, options.slots) }),

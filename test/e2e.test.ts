@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { addWorktree, cli, makeRepo, scratch, sh, write } from "./helpers.ts";
 
@@ -23,6 +23,26 @@ const BUILD = ["xcodebuild", "-scheme", "demo-Package", "-destination", "platfor
 const compiled = (output: string) => output.split("\n").filter((line) => line.startsWith("SwiftCompile ")).length;
 
 describe.skipIf(!enabled)("with real xcodebuild", () => {
+  test("a standalone package nested under Tuist builds without generating the workspace", async () => {
+    const repo = makeRepo({
+      "Tuist.swift": "",
+      "Tuist/Package.swift": "",
+      "Packages/demo/Package.swift": PACKAGE,
+      "Packages/demo/Sources/demo/main.swift": 'import Greeter\nprint(greeting("slot"))\n',
+      "Packages/demo/Sources/Greeter/Greeter.swift": GREETER,
+      ".gitignore": ".build/\n",
+      "bin/tuist": "#!/bin/sh\nexit 71\n",
+    });
+    chmodSync(join(repo, "bin/tuist"), 0o755);
+    const result = await cli(BUILD, {
+      cwd: join(repo, "Packages/demo"),
+      home: scratch(),
+      env: { PATH: `${join(repo, "bin")}:${process.env.PATH}` },
+    });
+    expect(result.code, result.stderr + result.stdout.slice(-2000)).toBe(0);
+    expect(compiled(result.stdout)).toBeGreaterThan(0);
+  }, 120_000);
+
   test("a fresh worktree compiles nothing, an edit compiles, a diagnostic names the worktree, products debug correctly", async () => {
     const repo = makeRepo(
       {
