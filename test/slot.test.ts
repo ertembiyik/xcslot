@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { slotPaths } from "../src/lib/layout.ts";
+import { ok } from "../src/lib/result.ts";
 import { systemProcesses } from "../src/lib/proc.ts";
 import { holderOf, tryLock, tryPermit, unlock } from "../src/slot/lock.ts";
 import { type PrepareStep, prepare } from "../src/slot/prepare.ts";
@@ -20,6 +21,28 @@ import { emptyState, readState, writeState } from "../src/slot/state.ts";
 import { syncInto, writeBack } from "../src/slot/sync.ts";
 import { debuggableBinaries } from "../src/xcodebuild/handout.ts";
 import { addWorktree, fakeProcesses, headOf, lockEnvFor, makeRepo, scratch, sh, write } from "./helpers.ts";
+
+test("identical worktrees keep the workspace open and changes saved on close are reconciled", () => {
+  const first = makeRepo({ "A.swift": "original", "B.swift": "other" });
+  const second = addWorktree(first, "second");
+  const slot = addWorktree(first, "slot");
+  const head = headOf(first);
+  const state = emptyState();
+  syncInto(first, head, slot, state, [])._unsafeUnwrap();
+  let closed = 0;
+  const close = () => {
+    closed++;
+    write(slot, { "A.swift": "IDE autosave" });
+    return ok(undefined);
+  };
+  syncInto(second, head, slot, state, [], close)._unsafeUnwrap();
+  expect(closed).toBe(0);
+  write(second, { "B.swift": "edited" });
+  syncInto(second, head, slot, state, [], close)._unsafeUnwrap();
+  expect(closed).toBe(1);
+  expect(readFileSync(join(slot, "A.swift"), "utf8")).toBe("original");
+  expect(readFileSync(join(slot, "B.swift"), "utf8")).toBe("edited");
+});
 
 test("a lock has one holder, survives nothing but its owner, and is reclaimed when the owner is gone", () => {
   const dir = join(scratch(), "lock");
@@ -311,7 +334,7 @@ test("housekeeping removes slots of deleted repositories and idle extra slots, n
   sweep(root, 3, env);
   expect(existsSync(slotPaths(live, 7).dir)).toBe(false);
 
-  expect(removeSlot(held, repo, env)).toBe(false);
+  expect(removeSlot(held, repo, env)._unsafeUnwrap()).toBe(false);
   expect(readState(slotPaths(live, 1).state).usedAt).toBeDefined();
 });
 

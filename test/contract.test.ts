@@ -39,8 +39,10 @@ test("every error a command declares is a known code, and every command is in th
   const entries = catalog(program());
   expect(entries.map((entry) => entry.command).sort()).toEqual(
     [
+      "build",
       "commands",
       "doctor",
+      "mcp-build",
       "run",
       "skill install",
       "skill print",

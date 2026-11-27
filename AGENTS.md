@@ -12,6 +12,7 @@ bun install                         # also wires the git hooks (husky)
 bun run verify                      # format check, types, reference tables, fast tests; the pre-push hook runs it
 bun run xcslot -- <args>            # the CLI from source
 XCSLOT_E2E=1 bun test test/e2e.test.ts   # real xcodebuild on a generated Swift package; macOS, about 10 s warm
+XCSLOT_MCP_E2E=1 bun test test/mcp-build.test.ts  # real iOS build with an enabled headless Xcode service
 bun fmt                             # format
 bun run docs                        # regenerate the tables in docs/reference.md after changing src/commands/schemas.ts
 bun run build                       # standalone binaries in dist/

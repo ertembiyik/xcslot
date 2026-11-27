@@ -162,7 +162,13 @@ export function syncInto(
   slotSrc: string,
   state: SlotState,
   includeIgnored: readonly string[],
+  beforeChange?: () => Result<void, XcslotError>,
 ): Result<SyncResult, XcslotError> {
+  // Closing an IDE workspace may save files. Restart the comparison after closing so the
+  // mirror always reflects the caller. An identical tree passes through without a second scan.
+  const restart =
+    beforeChange && (() => beforeChange().andThen(() => syncInto(top, head, slotSrc, state, includeIgnored)));
+  if (restart && state.head !== head) return restart();
   // Moves HEAD and the index only, so build scripts that ask git for the commit see the worktree's.
   const moved = git(slotSrc, "reset", "-q", "--mixed", head);
   if (moved.isErr()) return err(moved.error);
@@ -183,6 +189,12 @@ export function syncInto(
       const source = lstat(join(top, path));
       if (source && !source.isDirectory()) sources.set(path, source);
     }
+    if (
+      restart &&
+      (sources.size !== Object.keys(state.files).length ||
+        [...sources.keys()].some((path) => !Object.hasOwn(state.files, path)))
+    )
+      return restart();
     const byFoldedCase = new Map([...sources.keys()].map((path) => [path.toLowerCase(), path]));
     const clash = lstat(join(slotSrc, ".GIT")) ? caseClash([...sources.keys()]) : undefined;
     if (clash) {
@@ -203,8 +215,10 @@ export function syncInto(
       const twinFound = twin && lstat(join(slotSrc, twin));
       if (twin && twinFound && twinFound.ino === found.ino && twinFound.dev === found.dev) {
         if (readdirSync(dirname(join(slotSrc, twin))).includes(basename(twin))) continue;
+        if (restart) return restart();
         renameSync(join(slotSrc, path), join(slotSrc, twin));
       } else {
+        if (restart) return restart();
         unlinkSync(join(slotSrc, path));
       }
       removed++;
@@ -218,10 +232,12 @@ export function syncInto(
         inPlace && before && sameStat(before.src, statOf(source)) && sameStat(before.dst, statOf(lstat(to)));
       if (!untouched) {
         if (!inPlace || !sameContent(from, source, to)) {
+          if (restart) return restart();
           makeParent(slotSrc, path);
           copyEntry(from, source, to);
           changed++;
         } else if (!source.isSymbolicLink() && !sameMode(source, lstat(to))) {
+          if (restart) return restart();
           chmodSync(to, source.mode & 0o7777);
           changed++;
         }

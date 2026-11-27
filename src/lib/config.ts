@@ -5,7 +5,11 @@ import { failure, type XcslotError } from "./errors.ts";
 import { nextCommand } from "./next.ts";
 import { err, ok, type Result } from "./result.ts";
 
+export const buildEngines = ["auto", "mcp", "xcodebuild"] as const;
+export type BuildEngine = (typeof buildEngines)[number];
+
 export const userConfigSchema = z.strictObject({
+  buildEngine: z.enum(buildEngines).default("auto"),
   /** Warm slots kept per repository. */
   slots: z.int().min(1).max(16).default(3),
   /** Heavy commands running at once on this Mac, across repositories. */

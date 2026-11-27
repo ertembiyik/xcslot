@@ -8,10 +8,13 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import type { XcslotError } from "../lib/errors.ts";
+import { err, ok, type Result } from "../lib/result.ts";
+import { closeHeadlessWorkspace } from "../adapters/headless.ts";
 import { dirname, join } from "node:path";
 import { logsDir, repoRecordPath, type SlotPaths, slotPaths } from "../lib/layout.ts";
 import { exec } from "../lib/proc.ts";
-import { type LockEnv, tryLock } from "./lock.ts";
+import { type LockEnv, tryLock, unlock } from "./lock.ts";
 import { readState, repoRecordSchema } from "./state.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -44,15 +47,20 @@ export const repoDirs = (root: string): string[] =>
  * Removes a slot unless a build holds it. The folder is renamed first, which is instant and atomic, so no
  * build can start in a half-deleted slot; the gigabytes go afterwards.
  */
-export function removeSlot(slot: SlotPaths, main: string | undefined, env: LockEnv): boolean {
-  if (!existsSync(slot.dir)) return false;
-  if (!tryLock(slot.lock, "removing this slot", env)) return false;
+export function removeSlot(slot: SlotPaths, main: string | undefined, env: LockEnv): Result<boolean, XcslotError> {
+  if (!existsSync(slot.dir)) return ok(false);
+  if (!tryLock(slot.lock, "removing this slot", env)) return ok(false);
+  const closed = closeHeadlessWorkspace(slot);
+  if (closed.isErr()) {
+    unlock(slot.lock, env);
+    return err(closed.error);
+  }
   const grave = join(dirname(slot.dir), `.removed-${slot.n}-${env.now()}`);
   renameSync(slot.dir, grave);
   rmSync(grave, { recursive: true, force: true });
   // The checkout was a registered git worktree; without this the repository keeps a dangling entry.
   if (main !== undefined && existsSync(main)) exec(["git", "worktree", "prune"], main);
-  return true;
+  return ok(true);
 }
 
 export function rotateLogs(repoDir: string, keep = LOGS_KEPT): void {
@@ -87,7 +95,7 @@ export function sweep(root: string, configuredSlots: number, env: LockEnv, force
       const slot = slotPaths(repoDir, n);
       const idleFor = env.now() - (readState(slot.state).usedAt ?? 0);
       if (gone || (n > configuredSlots && idleFor > DAY_MS)) {
-        if (removeSlot(slot, main, env) && !gone) swept.expiredSlots.push(slot.dir);
+        if (removeSlot(slot, main, env).unwrapOr(false) && !gone) swept.expiredSlots.push(slot.dir);
       }
     }
     if (gone && slotNumbers(repoDir).length === 0) {

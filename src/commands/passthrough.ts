@@ -1,6 +1,16 @@
-import { createWriteStream, existsSync, mkdirSync, realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { createWriteStream, existsSync, mkdirSync, realpathSync, readFileSync, writeFileSync } from "node:fs";
 import { constants } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import {
+  closeHeadlessWorkspace,
+  headlessCommand,
+  headlessMarker,
+  headlessProductData,
+  reusableWorkspace,
+  nestedHeadlessData,
+} from "../adapters/headless.ts";
+
 import { prepareSteps } from "../adapters/steps.ts";
 import type { Deps } from "../context.ts";
 import { loadProjectConfig, loadUserConfig } from "../lib/config.ts";
@@ -27,7 +37,7 @@ export interface PassthroughOptions {
   readonly dsym: boolean;
 }
 
-export type Wrapped = "xcodebuild" | "run";
+export type Wrapped = "xcodebuild" | "run" | "mcp-build";
 
 interface Child {
   readonly argv: readonly string[];
@@ -107,6 +117,10 @@ export async function runInSlot(
   wrapped: Wrapped,
   args: readonly string[],
 ): Promise<Result<number, XcslotError>> {
+  const headless = wrapped === "mcp-build";
+  if (headless && (args.length < 2 || args.length > 3)) {
+    return err(failure("usage_error", "Expected a project or workspace, a scheme and an optional destination title"));
+  }
   if (args.length === 0) {
     return err(
       failure("usage_error", `No ${wrapped === "run" ? "command" : "xcodebuild arguments"} given`, {
@@ -117,14 +131,15 @@ export async function runInSlot(
   const given = options.from === undefined ? deps.cwd : resolve(deps.cwd, options.from);
   // git reports the worktree by its real path; a symlinked spelling of `from` would point outside it.
   const from = existsSync(given) ? realpathSync(given) : given;
-  const command = wrapped === "xcodebuild" ? ["xcodebuild", ...args] : [...args];
+  const command = wrapped === "run" ? [...args] : [wrapped, ...args];
 
   // Inside a slot already (a script run by `xcslot run` that builds): use that slot, take no second one.
-  const outerDerivedData = deps.env.XCSLOT_DERIVED_DATA;
+  const outerDerivedData = deps.env.XCSLOT_DERIVED_DATA ?? nestedHeadlessData(deps, from);
   if (outerDerivedData !== undefined) {
+    if (headless) return err(failure("usage_error", "Start mcp-build from the caller's worktree"));
     const nested = wrapped === "xcodebuild" && !args.includes("-derivedDataPath") && !needsNoProject(args);
     const argv = nested ? [...command, "-derivedDataPath", outerDerivedData] : command;
-    return spawnThrough(deps, { argv, cwd: from, stdoutTo: "stdout" });
+    return spawnThrough(deps, { argv, cwd: from, env: { XCSLOT_DERIVED_DATA: outerDerivedData }, stdoutTo: "stdout" });
   }
   if (wrapped === "xcodebuild" && needsNoProject(args)) {
     return spawnThrough(deps, { argv: command, cwd: from, stdoutTo: "stdout" });
@@ -135,6 +150,15 @@ export async function runInSlot(
   const root = slotsRoot(deps.env, deps.home, config.value.root);
   const repo = resolveRepo(from, root);
   if (repo.isErr()) return err(repo.error);
+  // Normalize absolute/relative caller paths before the command moves to the slot.
+  const workspace = headless ? relative(repo.value.worktree, resolve(from, args[0] as string)) : undefined;
+  if (workspace !== undefined && (workspace.startsWith("../") || !/\.(xcodeproj|xcworkspace)$/.test(workspace))) {
+    return err(
+      failure("usage_error", "The project or workspace must be inside the caller's worktree", {
+        details: { beforeBuild: true },
+      }),
+    );
+  }
   const project = loadProjectConfig(repo.value.worktree);
   if (project.isErr()) return err(project.error);
   const head = headOf(repo.value.worktree);
@@ -158,8 +182,34 @@ export async function runInSlot(
     const state = readState(slot.state);
     const created = ensureCheckout(repo.value, slot, head.value);
     if (created.isErr()) return err(created.error);
+    // Xcode adds its own workspace subdirectory. Keep the search for this build's products
+    // separate from the CLI cache and from other projects, schemes and destinations.
+    const derived =
+      workspace === undefined
+        ? slot.derivedData
+        : join(
+            slot.dir,
+            "mcp",
+            createHash("sha256")
+              .update(JSON.stringify([workspace, ...args.slice(1)]))
+              .digest("hex"),
+          );
+    const hasWorkspace = existsSync(headlessMarker(slot));
+    const reuse =
+      hasWorkspace && workspace !== undefined && reusableWorkspace(slot, join(slot.src, workspace), derived);
+    if (hasWorkspace && !reuse) {
+      const closed = closeHeadlessWorkspace(slot);
+      if (closed.isErr()) return err(closed.error);
+    }
     const syncStarted = deps.now();
-    const synced = syncInto(repo.value.worktree, head.value, slot.src, state, project.value.sync.includeIgnored);
+    const synced = syncInto(
+      repo.value.worktree,
+      head.value,
+      slot.src,
+      state,
+      project.value.sync.includeIgnored,
+      reuse ? () => closeHeadlessWorkspace(slot) : undefined,
+    );
     if (synced.isErr()) return err(synced.error);
     deps.stderr.write(
       `xcslot: slot ${slot.n}: synced ${synced.value.changed + synced.value.removed} changed files in ${seconds(deps.now() - syncStarted)}s\n`,
@@ -170,6 +220,13 @@ export async function runInSlot(
     const map = createPathMapper(slot.src, repo.value.worktree);
     const steps = prepareSteps(slot.src, project.value, touchedPaths(from, repo.value.worktree, args));
     if (steps.isErr()) return err(steps.error);
+    // Generated inputs can change outside the mirrored file list.
+    if (steps.value.length && existsSync(headlessMarker(slot))) {
+      const closed = closeHeadlessWorkspace(slot);
+      if (closed.isErr()) return err(closed.error);
+      const refreshed = syncInto(repo.value.worktree, head.value, slot.src, state, project.value.sync.includeIgnored);
+      if (refreshed.isErr()) return err(refreshed.error);
+    }
     let stepFailure: XcslotError | undefined;
     const prepared = await prepare(
       steps.value,
@@ -184,6 +241,42 @@ export async function runInSlot(
     writeState(slot.state, state);
     if (prepared.isErr()) return err(stepFailure ?? prepared.error);
 
+    if (headless) {
+      // A reopened IDE can still retain an old filesystem-synchronized group. Once
+      // Xcode has opened a slot, do not ask it to build a different file membership
+      // or project definition in that slot. Keep the initial membership as a receipt.
+      const paths = Object.keys(state.files).sort();
+      const hash = createHash("sha256").update(JSON.stringify([workspace, paths]));
+      for (const path of paths.filter((path) =>
+        /\.(xcodeproj|xcworkspace)\/|(^|\/)Package\.(swift|resolved)$|\.xcconfig$/.test(path),
+      )) {
+        hash
+          .update(path)
+          .update("\0")
+          .update(readFileSync(join(slot.src, path)));
+      }
+      const signature = hash.digest("hex");
+      const receipt = join(slot.dir, "headless-inputs");
+      const changed = existsSync(receipt)
+        ? readFileSync(receipt, "utf8") !== signature
+        : existsSync(join(slot.dir, "mcp"));
+      if (changed || steps.value.length) {
+        // A caller can safely use the CLI after the workspace has been closed.
+        const closed = closeHeadlessWorkspace(slot);
+        if (closed.isErr()) return err(closed.error);
+        return err(
+          failure(
+            "usage_error",
+            changed ? "MCP workspace inputs changed" : "MCP cannot verify generated project inputs",
+            {
+              hint: "Use xcodebuild for this slot's changed project or source membership",
+              details: { beforeBuild: true },
+            },
+          ),
+        );
+      }
+      if (!existsSync(receipt)) writeFileSync(receipt, signature);
+    }
     const places = { cwd: from, worktree: repo.value.worktree, slotSrc: slot.src, slotDerivedData: slot.derivedData };
     const rewritten = wrapped === "xcodebuild" ? rewriteArgs(args, places) : undefined;
     const cwd = rewritten?.cwd ?? join(slot.src, relative(repo.value.worktree, from));
@@ -211,11 +304,18 @@ export async function runInSlot(
     const permit = await acquirePermit(wait, root, cap, label);
     if (permit.isErr()) return err(permit.error);
     const started = deps.now();
+    const argv =
+      workspace !== undefined
+        ? headlessCommand(join(slot.src, workspace), ...args.slice(1))
+        : rewritten
+          ? ["xcodebuild", ...rewritten.args]
+          : command;
     const ran = await spawnThrough(deps, {
-      argv: rewritten ? ["xcodebuild", ...rewritten.args] : command,
+      argv,
       cwd,
       env: {
-        XCSLOT_DERIVED_DATA: slot.derivedData,
+        ...(headless && { XCSLOT_MCP_KEEP_OPEN: steps.value.length === 0 ? "1" : "0" }),
+        XCSLOT_DERIVED_DATA: derived,
         XCSLOT_SLOT_DIR: slot.src,
         // Left out for xcodebuild: a value that differs per worktree would make every hand-off re-plan the build.
         ...(wrapped === "run" && { XCSLOT_WORKTREE: repo.value.worktree }),
@@ -226,8 +326,18 @@ export async function runInSlot(
     });
     unlock(permit.value, env);
     if (ran.isErr()) return err(ran.error);
+    if (headless && (ran.value === 78 || ran.value === 79)) {
+      return err(
+        failure("tool_missing", "Headless Xcode adapter failed", {
+          hint: "See the adapter diagnostic and build log",
+          details: { logPath, beforeBuild: ran.value === 78 && !existsSync(headlessMarker(slot)) },
+        }),
+      );
+    }
 
-    const back = writeBack(slot.src, state);
+    // Xcode may save project files and string catalogs even on a failed build. In MCP
+    // mode the caller only requests products. The next sync reconciles the slot copy.
+    const back = headless ? ok({ returned: [], conflicts: [] }) : writeBack(slot.src, state);
     if (back.isErr()) return err(back.error);
     if (back.value.returned.length > 0) {
       deps.stderr.write(
@@ -242,18 +352,24 @@ export async function runInSlot(
     state.usedAt = deps.now();
     writeState(slot.state, state);
 
-    let products = `${join(slot.derivedData, "Build", "Products")} (valid until the next build in slot ${slot.n})`;
+    let productData = slot.derivedData;
+    if (workspace !== undefined && ran.value === 0 && asked !== undefined) {
+      const actual = headlessProductData(derived, join(slot.src, workspace));
+      if (actual.isErr()) return err(actual.error);
+      productData = actual.value;
+    }
+    let products = `${join(productData, "Build", "Products")} (valid until the next build in slot ${slot.n})`;
     // A file both the build and the caller changed stays the caller's, here as in write-back.
     const conflicts = new Set(back.value.conflicts.map((path) => join(repo.value.worktree, path)));
     const keep = (path: string) => conflicts.has(path);
     const handOut = async (from: string, to: string, merge: boolean) => {
-      const cloned = merge ? mergeProducts(from, to, keep) : cloneProducts(slot.derivedData, to).map(() => 1);
+      const cloned = merge ? mergeProducts(from, to, keep) : cloneProducts(productData, to).map(() => 1);
       if (cloned.isErr()) return err(cloned.error);
       if (cloned.value === 0 || !options.dsym) return ok(0);
       return ok(await embedDebugSymbols(to, slot.src, repo.value.worktree));
     };
     if (ran.value === 0 && asked !== undefined) {
-      const slotProducts = join(slot.derivedData, "Build", "Products");
+      const slotProducts = join(productData, "Build", "Products");
       const done = await handOut(slotProducts, asked, options.productsTo === undefined);
       if (done.isErr()) return err(done.error);
       products = `${asked}${done.value > 0 ? ` (${done.value} dSYMs)` : ""}`;
@@ -269,7 +385,7 @@ export async function runInSlot(
       if (done.isErr()) return err(done.error);
     }
     deps.stderr.write(
-      `xcslot: slot ${slot.n}: ${command[0]} exited ${ran.value} after ${seconds(deps.now() - started)}s; ${wrapped === "xcodebuild" ? `products: ${products}; ` : ""}log: ${logPath}\n`,
+      `xcslot: slot ${slot.n}: ${headless ? "BuildProject" : command[0]} exited ${ran.value} after ${seconds(deps.now() - started)}s; ${wrapped === "xcodebuild" ? `products: ${products}; ` : ""}log: ${logPath}\n`,
     );
     return ok(ran.value);
   } finally {

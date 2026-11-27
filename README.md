@@ -27,11 +27,11 @@ your worktree into a free one and runs your build there. The first build of a ne
 incremental one.
 
 ```sh
-xcslot xcodebuild -scheme App -destination 'generic/platform=iOS Simulator' build
+xcslot build -scheme App -destination 'generic/platform=iOS Simulator' build
 ```
 
-Put `xcslot` in front of the command you already run. Every argument passes through, and the output and exit
-code come back unchanged, with paths pointing at your worktree.
+Use `xcslot build` to select the build engine automatically. For existing scripts and native output,
+put `xcslot` in front of `xcodebuild`. Its arguments, output and exit code pass through, with paths pointing at your worktree.
 
 Works with any coding agent that runs shell commands: Claude Code, Codex, Cursor and the rest. Builds Xcode
 projects and workspaces, Tuist (generated inside the slot), Swift packages and any generator you declare in
@@ -76,14 +76,13 @@ worktrees, CI.
 
 ## Quick start
 
-In a worktree, run your usual build with `xcslot` in front. A new slot's first build is a cold one:
+In a worktree, use the automatic builder. A new slot's first build is a cold one:
 
 ```sh
-xcslot xcodebuild -scheme App build
+xcslot build -scheme App build
 ```
 
-Run the same command in another worktree that was never built. It takes seconds, because nothing needs
-recompiling, and prints two lines of its own on stderr:
+Run the same command in another worktree at the same revision. It can reuse its build data. Here is the existing CLI runner on a warm slot:
 
 ```console
 $ xcslot xcodebuild -scheme IceCubesApp build
@@ -98,6 +97,8 @@ xcslot: slot 1: xcodebuild exited 0 after 3.7s; products: ~/Library/Developer/xc
 | `xcslot xcodebuild --products-to out -scheme App build` | Keeps the built app, with debug symbols                |
 | `xcslot status`                                         | Who holds which slot right now                         |
 
+Use `xcslot build -project App.xcodeproj -scheme App` for automatic engine selection. It uses Apple's headless Xcode service when compatible and falls back to xcodebuild. [Automatic builds](docs/reference.md#automatic-builds)
+
 ## For coding agents
 
 xcslot is built to be driven by an agent: it never prompts, it says who it is waiting for, and its own
@@ -105,7 +106,7 @@ failures are one JSON object with a code, a hint and a safe next command. The sk
 [Install](#install) is four rules and fits in a screen. Without skills, one line in `AGENTS.md` does it:
 
 ```md
-Build and test through xcslot: `xcslot xcodebuild <the usual arguments>`. `xcslot commands --json` lists the rest.
+Build through xcslot: `xcslot build <the usual arguments>` chooses the engine automatically. For native output and scripts, use `xcslot xcodebuild <the usual arguments>`. `xcslot commands --json` lists the rest.
 ```
 
 Any git worktree works, including the ones Claude Code, Codex and Cursor create: every worktree of a
