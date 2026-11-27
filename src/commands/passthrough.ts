@@ -132,8 +132,13 @@ function touchedPaths(
   const named = args.flatMap((arg, i) => {
     const pathValue = PATH_OPTIONS.has(args[i - 1] ?? "");
     const assignment = pathValue ? undefined : arg.match(/^(-{1,2}[\w-]+|[A-Za-z_]\w*)=(.*)$/s);
-    const value = assignment?.[2] ?? arg;
-    const pathOption = pathValue || PATH_OPTIONS.has(assignment?.[1] ?? "");
+    // Compilers accept a joined include path in run operands, for example -I../../Derived.
+    const includePath =
+      wrapped === "run" && i > 0 && !pathValue && !assignment && arg.startsWith("-I") && arg.length > 2
+        ? arg.slice(2)
+        : undefined;
+    const value = assignment?.[2] ?? includePath ?? arg;
+    const pathOption = pathValue || includePath !== undefined || PATH_OPTIONS.has(assignment?.[1] ?? "");
     // An arbitrary command can read a bare symlink, even if its destination hasn't been generated yet.
     // The executable itself is looked up on PATH; xcodebuild already identifies its explicit path options.
     const pathLike = value === "." || value === ".." || (!value.startsWith("-") && value.includes("/"));

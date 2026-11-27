@@ -597,3 +597,31 @@ test("a PATH-search command is not mistaken for a same-named link in the package
   expect(result.code).toBe(0);
   expect(existsSync(calls)).toBe(false);
 });
+
+test("an attached compiler include path outside the package keeps Tuist preparation", async () => {
+  const { cwd, home, repo, env } = mixedTuistRepo();
+  write(repo, {
+    "bin/tuist": '#!/bin/sh\nif [ "$1" = generate ]; then mkdir -p Derived; echo generated > Derived/Generated.h; fi\n',
+  });
+  // A stand-in compiler reads its include path so the test works without a Swift or Xcode installation.
+  const result = await cli(["run", "--", "sh", "-c", 'cat "${1#-I}/Generated.h"', "compiler", "-I../../Derived"], {
+    cwd,
+    home,
+    env,
+  });
+  expect(result.code, result.stderr).toBe(0);
+  expect(result.stdout).toBe("generated\n");
+  expect(result.stderr).toContain("xcslot: tuist generate");
+});
+
+test("package-local compiler include paths and unrelated flags still skip Tuist", async () => {
+  const { cwd, home, env, calls } = mixedTuistRepo();
+  write(cwd, { "Sources/Local.h": "package-local\n" });
+  const result = await cli(
+    ["run", "--", "sh", "-c", 'cat "${1#-I}/Local.h"', "compiler", "-ISources", "-Werror", "-Wl,--opaque/flag"],
+    { cwd, home, env },
+  );
+  expect(result.code, result.stderr).toBe(0);
+  expect(result.stdout).toBe("package-local\n");
+  expect(existsSync(calls)).toBe(false);
+});
